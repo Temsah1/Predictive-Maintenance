@@ -42,16 +42,5 @@ The model shows high precision in classifying different failure types, especiall
 2. Feature Importance
 Based on the analysis, Torque and Rotational Speed were found to be the most significant factors contributing to machine failure.
 
-🚀 How to Run
-Clone the repository:
-
-Bash
-git clone https://github.com/your-username/predictive-maintenance-ai.git
-Install requirements:
-
-Bash
-pip install pandas matplotlib seaborn scikit-learn
-Run the notebook/script to see the results.
-
 🎓 Acknowledgments
 Special thanks to the British University in Egypt (BUE) for providing the training and resources to complete this project.

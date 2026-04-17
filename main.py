@@ -1,46 +1,51 @@
-# -*- coding: utf-8 -*-
-"""
-Nexus Predictive Maintenance
-============================
-A comprehensive predictive maintenance solution with AWS cloud integration,
-admin panel, user authentication, Excel-based failure prediction, and
-maintenance scheduling. Built with Streamlit.
-"""
+# ===================================================================
+# Nexus Predictive Maintenance - SLB Project
+# A comprehensive predictive maintenance solution with admin analytics
+# Author: Data Science Team
+# Version: 2.0.0
+# ===================================================================
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
+import seaborn as sns
 from datetime import datetime, timedelta
-import hashlib
+import time
 import io
 import base64
-import os
-import json
-import time
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import classification_report, mean_squared_error, r2_score
-from sklearn.impute import SimpleImputer
+import hashlib
 import joblib
+import os
 import warnings
-import boto3
-from botocore.exceptions import NoCredentialsError, ClientError
-import tempfile
-import calendar
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score,
+                             confusion_matrix, roc_curve, auc, classification_report,
+                             mean_squared_error, r2_score)
+from sklearn.decomposition import PCA
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.feature_selection import SelectFromModel
+from xgboost import XGBClassifier
+import shap
+import openpyxl
+from io import BytesIO
 import random
 import string
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import json
+from typing import Dict, List, Tuple, Optional, Any
 
 warnings.filterwarnings('ignore')
 
-# =============================================================================
-# Configuration & Constants
-# =============================================================================
+# ===================================================================
+# Page Configuration & Custom Dark Theme
+# ===================================================================
 st.set_page_config(
     page_title="Nexus Predictive Maintenance",
     page_icon="🔧",
@@ -48,931 +53,1191 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# AWS Configuration (use Streamlit secrets or environment variables)
-AWS_ACCESS_KEY = st.secrets.get("AWS_ACCESS_KEY", os.environ.get("AWS_ACCESS_KEY", ""))
-AWS_SECRET_KEY = st.secrets.get("AWS_SECRET_KEY", os.environ.get("AWS_SECRET_KEY", ""))
-AWS_REGION = st.secrets.get("AWS_REGION", os.environ.get("AWS_REGION", "us-east-1"))
-S3_BUCKET_NAME = st.secrets.get("S3_BUCKET_NAME", os.environ.get("S3_BUCKET_NAME", "nexus-predictive-maintenance"))
+# Custom CSS for dark theme and enhanced UI
+st.markdown("""
+<style>
+    /* Main background */
+    .stApp {
+        background-color: #0E1117;
+        color: #FAFAFA;
+    }
+    
+    /* Sidebar styling */
+    .css-1d391kg, .css-1lcbmhc, .css-1kyxreq {
+        background-color: #1E1E2E;
+    }
+    
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 {
+        color: #FFFFFF !important;
+        font-family: 'Segoe UI', sans-serif;
+    }
+    
+    /* Cards and containers */
+    .st-bw, .st-cb, .st-cm, .st-co, .st-cp, .st-cq, .st-cr, .st-cs, .st-ct, .st-cu {
+        background-color: #1E1E2E;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        border: 1px solid #2D2D3D;
+    }
+    
+    /* Metric cards */
+    div[data-testid="metric-container"] {
+        background-color: #1E1E2E;
+        border-radius: 10px;
+        padding: 15px;
+        border-left: 5px solid #FF4B4B;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    }
+    
+    /* Buttons */
+    .stButton > button {
+        background-color: #FF4B4B;
+        color: white;
+        border-radius: 8px;
+        border: none;
+        padding: 10px 24px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        background-color: #FF6B6B;
+        box-shadow: 0 4px 8px rgba(255,75,75,0.3);
+        transform: translateY(-2px);
+    }
+    
+    /* Dataframe styling */
+    .dataframe {
+        background-color: #1E1E2E !important;
+        color: white !important;
+    }
+    
+    /* File uploader */
+    .st-bq, .st-br {
+        border-color: #FF4B4B !important;
+    }
+    
+    /* Expander */
+    .streamlit-expanderHeader {
+        background-color: #2D2D3D;
+        border-radius: 8px;
+    }
+    
+    /* Progress bar */
+    .stProgress > div > div > div > div {
+        background-color: #FF4B4B;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: #1E1E2E;
+        border-radius: 8px 8px 0 0;
+        padding: 10px 20px;
+        color: #FAFAFA;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #FF4B4B !important;
+        color: white !important;
+    }
+    
+    /* Login form */
+    .login-box {
+        background: rgba(30,30,46,0.9);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        border: 1px solid #3A3A4A;
+    }
+    
+    /* Animated background */
+    .stApp {
+        background: linear-gradient(135deg, #0E1117 0%, #1A1A2E 100%);
+    }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #1E1E2E;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #FF4B4B;
+        border-radius: 5px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# Admin credentials (hardcoded as per request)
-ADMIN_EMAIL = "kareemeltemsah7@gmail.com"  # corrected typo
+# ===================================================================
+# Session State Initialization
+# ===================================================================
+def init_session_state():
+    """Initialize all session state variables"""
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'user_email' not in st.session_state:
+        st.session_state.user_email = None
+    if 'is_admin' not in st.session_state:
+        st.session_state.is_admin = False
+    if 'model' not in st.session_state:
+        st.session_state.model = None
+    if 'scaler' not in st.session_state:
+        st.session_state.scaler = None
+    if 'feature_names' not in st.session_state:
+        st.session_state.feature_names = None
+    if 'model_metrics' not in st.session_state:
+        st.session_state.model_metrics = None
+    if 'data' not in st.session_state:
+        st.session_state.data = None
+    if 'predictions' not in st.session_state:
+        st.session_state.predictions = None
+    if 'maintenance_schedule' not in st.session_state:
+        st.session_state.maintenance_schedule = None
+    if 'uploaded_file' not in st.session_state:
+        st.session_state.uploaded_file = None
+
+init_session_state()
+
+# ===================================================================
+# Authentication System
+# ===================================================================
+ADMIN_EMAIL = "kareemeltemsah7@gmail.com"
 ADMIN_PASSWORD = "temsah1"
 
-# Model file names
-CLASSIFIER_MODEL_FILE = "failure_classifier.pkl"
-REGRESSOR_MODEL_FILE = "rul_regressor.pkl"
-SCALER_FILE = "scaler.pkl"
-LABEL_ENCODER_FILE = "label_encoder.pkl"
-
-# Initialize session state
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'user_email' not in st.session_state:
-    st.session_state.user_email = ""
-if 'is_admin' not in st.session_state:
-    st.session_state.is_admin = False
-if 'page' not in st.session_state:
-    st.session_state.page = "Login"
-if 'users_db' not in st.session_state:
-    st.session_state.users_db = {
-        ADMIN_EMAIL: {
-            "password": hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest(),
-            "role": "admin",
-            "created_at": datetime.now().isoformat(),
-            "last_login": None
-        }
-    }
-if 's3_client' not in st.session_state:
-    st.session_state.s3_client = None
-if 'model_trained' not in st.session_state:
-    st.session_state.model_trained = False
-
-# =============================================================================
-# AWS S3 Helper Functions
-# =============================================================================
-def initialize_s3_client():
-    """Initialize boto3 S3 client with credentials."""
-    try:
-        if AWS_ACCESS_KEY and AWS_SECRET_KEY:
-            client = boto3.client(
-                's3',
-                aws_access_key_id=AWS_ACCESS_KEY,
-                aws_secret_access_key=AWS_SECRET_KEY,
-                region_name=AWS_REGION
-            )
-            # Test connection
-            client.list_buckets()
-            st.session_state.s3_client = client
-            return True
-        else:
-            st.warning("AWS credentials not found. Cloud features will be simulated.")
-            return False
-    except Exception as e:
-        st.error(f"AWS S3 connection failed: {e}")
-        return False
-
-def upload_file_to_s3(file_obj, s3_key):
-    """Upload a file-like object to S3 bucket."""
-    if st.session_state.s3_client is None:
-        return False
-    try:
-        st.session_state.s3_client.upload_fileobj(file_obj, S3_BUCKET_NAME, s3_key)
-        return True
-    except Exception as e:
-        st.error(f"S3 upload error: {e}")
-        return False
-
-def download_file_from_s3(s3_key):
-    """Download file from S3 and return bytes."""
-    if st.session_state.s3_client is None:
-        return None
-    try:
-        response = st.session_state.s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=s3_key)
-        return response['Body'].read()
-    except Exception as e:
-        st.error(f"S3 download error: {e}")
-        return None
-
-def list_s3_objects(prefix=""):
-    """List objects in S3 bucket with given prefix."""
-    if st.session_state.s3_client is None:
-        return []
-    try:
-        response = st.session_state.s3_client.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix=prefix)
-        if 'Contents' in response:
-            return [obj['Key'] for obj in response['Contents']]
-        return []
-    except Exception as e:
-        st.error(f"S3 list error: {e}")
-        return []
-
-def save_model_to_s3(model, filename):
-    """Save a model object to S3 using joblib."""
-    buffer = io.BytesIO()
-    joblib.dump(model, buffer)
-    buffer.seek(0)
-    return upload_file_to_s3(buffer, f"models/{filename}")
-
-def load_model_from_s3(filename):
-    """Load a model object from S3."""
-    data = download_file_from_s3(f"models/{filename}")
-    if data:
-        return joblib.load(io.BytesIO(data))
-    return None
-
-# =============================================================================
-# Authentication & User Management
-# =============================================================================
-def hash_password(password):
-    """Hash a password using SHA-256."""
+def hash_password(password: str) -> str:
+    """Simple password hashing for demo purposes"""
     return hashlib.sha256(password.encode()).hexdigest()
 
-def authenticate_user(email, password):
-    """Check user credentials against stored database."""
-    users = st.session_state.users_db
-    if email in users:
-        if users[email]["password"] == hash_password(password):
-            users[email]["last_login"] = datetime.now().isoformat()
-            st.session_state.users_db = users
-            return users[email]["role"]
-    return None
-
-def add_user(email, password, role="user"):
-    """Add a new user to the database."""
-    if email in st.session_state.users_db:
-        return False, "User already exists."
-    st.session_state.users_db[email] = {
-        "password": hash_password(password),
-        "role": role,
-        "created_at": datetime.now().isoformat(),
-        "last_login": None
-    }
-    return True, "User added successfully."
-
-def delete_user(email):
-    """Delete a user (admin only)."""
-    if email == ADMIN_EMAIL:
-        return False, "Cannot delete admin account."
-    if email in st.session_state.users_db:
-        del st.session_state.users_db[email]
-        return True, "User deleted."
-    return False, "User not found."
-
-def get_all_users():
-    """Return list of all users (for admin panel)."""
-    return [
-        {
-            "email": email,
-            "role": data["role"],
-            "created_at": data["created_at"],
-            "last_login": data["last_login"]
-        }
-        for email, data in st.session_state.users_db.items()
-    ]
-
-# =============================================================================
-# Data Generation & Synthetic Dataset Creation
-# =============================================================================
-def generate_synthetic_machine_data(n_samples=1000, include_failures=True):
+def authenticate(email: str, password: str) -> Tuple[bool, bool]:
     """
-    Generate synthetic sensor data for industrial machines.
-    Features: temperature, vibration, pressure, humidity, runtime, load.
-    Target: failure_type (None, Overheat, Bearing, Seal, Electrical) and RUL.
+    Authenticate user and determine admin status.
+    Returns: (success, is_admin)
+    """
+    if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
+        return True, True
+    elif email and password:  # Any non-empty credentials for regular users
+        return True, False
+    return False, False
+
+def login_page():
+    """Render the login page with modern UI"""
+    st.markdown("""
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 80vh;">
+        <div style="width: 100%; max-width: 450px;">
+    """, unsafe_allow_html=True)
+    
+    with st.container():
+        st.markdown('<div class="login-box">', unsafe_allow_html=True)
+        
+        # Logo and Title
+        col1, col2, col3 = st.columns([1,2,1])
+        with col2:
+            st.image("https://img.icons8.com/fluency/96/000000/maintenance.png", width=80)
+        st.markdown("<h1 style='text-align: center; color: white; margin-bottom: 10px;'>Nexus Predictive</h1>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: #FF4B4B; margin-bottom: 30px;'>Maintenance System</h3>", unsafe_allow_html=True)
+        
+        with st.form("login_form"):
+            email = st.text_input("📧 Email Address", placeholder="your@email.com")
+            password = st.text_input("🔒 Password", type="password", placeholder="••••••••")
+            col1, col2, col3 = st.columns([1,2,1])
+            with col2:
+                submitted = st.form_submit_button("Login →", use_container_width=True)
+            
+            if submitted:
+                with st.spinner("Authenticating..."):
+                    time.sleep(0.5)
+                    success, is_admin = authenticate(email, password)
+                    if success:
+                        st.session_state.logged_in = True
+                        st.session_state.user_email = email
+                        st.session_state.is_admin = is_admin
+                        st.success("✅ Login successful! Redirecting...")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("❌ Invalid credentials. Please try again.")
+        
+        st.markdown("""
+        <div style='margin-top: 20px; text-align: center; color: #888;'>
+            <small>Demo credentials: any email/password (admin: kareemeltemsah7@gmail.com / temsah1)</small>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+# ===================================================================
+# Data Generation & Synthetic Dataset Creation
+# ===================================================================
+@st.cache_data
+def generate_synthetic_machine_data(n_samples: int = 5000) -> pd.DataFrame:
+    """
+    Generate a realistic synthetic dataset for predictive maintenance.
+    Features include sensor readings and operational parameters.
+    Target: 'failure' (binary) and 'time_to_failure' (days).
     """
     np.random.seed(42)
     
-    # Normal operating ranges
-    temp_mean, temp_std = 75, 15
-    vib_mean, vib_std = 0.5, 0.2
-    press_mean, press_std = 100, 10
-    hum_mean, hum_std = 45, 10
-    runtime_mean, runtime_std = 5000, 2000
-    load_mean, load_std = 70, 20
+    # Base parameters
+    n_machines = 50
+    machine_ids = [f'M{str(i).zfill(3)}' for i in range(1, n_machines+1)]
     
-    # Generate features
-    temperature = np.random.normal(temp_mean, temp_std, n_samples)
-    vibration = np.abs(np.random.normal(vib_mean, vib_std, n_samples))
-    pressure = np.random.normal(press_mean, press_std, n_samples)
-    humidity = np.random.normal(hum_mean, hum_std, n_samples)
-    runtime = np.abs(np.random.normal(runtime_mean, runtime_std, n_samples))
-    load = np.abs(np.random.normal(load_mean, load_std, n_samples))
+    data = []
+    current_date = datetime.now()
     
-    # Failure modes (if include_failures)
-    failure_type = np.array(['None'] * n_samples, dtype=object)
-    rul = np.random.uniform(100, 1000, n_samples)  # Remaining Useful Life in hours
-    
-    if include_failures:
-        # Introduce failure patterns
-        # Overheat: high temperature, high vibration
-        overheat_idx = np.where((temperature > 100) & (vibration > 0.8))[0]
-        failure_type[overheat_idx] = 'Overheat'
-        rul[overheat_idx] = np.random.uniform(0, 200, len(overheat_idx))
+    for _ in range(n_samples):
+        machine_id = np.random.choice(machine_ids)
         
-        # Bearing failure: high vibration, high runtime
-        bearing_idx = np.where((vibration > 1.0) & (runtime > 7000) & (failure_type == 'None'))[0]
-        failure_type[bearing_idx] = 'Bearing'
-        rul[bearing_idx] = np.random.uniform(0, 150, len(bearing_idx))
+        # Operational parameters
+        runtime_hours = np.random.uniform(100, 5000)
+        load_percent = np.random.uniform(20, 100)
+        ambient_temp = np.random.normal(25, 5)
         
-        # Seal failure: high pressure, high temperature
-        seal_idx = np.where((pressure > 120) & (temperature > 90) & (failure_type == 'None'))[0]
-        failure_type[seal_idx] = 'Seal'
-        rul[seal_idx] = np.random.uniform(0, 100, len(seal_idx))
+        # Sensor readings (normal operation + degradation patterns)
+        vibration_rms = np.random.weibull(1.5) * (1 + runtime_hours/5000) * (1 + (load_percent-50)/100)
+        temperature = ambient_temp + 15 + (runtime_hours/1000) * np.random.normal(1, 0.2) + (load_percent/100)*10
+        pressure = 100 + np.random.normal(0, 5) + (runtime_hours/2000) * 2
+        current_draw = 10 + (load_percent/100)*15 + np.random.normal(0, 1) + (runtime_hours/3000)*3
+        voltage = 220 + np.random.normal(0, 2) - (runtime_hours/5000)*1
         
-        # Electrical failure: high load, high humidity
-        electrical_idx = np.where((load > 90) & (humidity > 60) & (failure_type == 'None'))[0]
-        failure_type[electrical_idx] = 'Electrical'
-        rul[electrical_idx] = np.random.uniform(0, 80, len(electrical_idx))
+        # Additional features
+        oil_viscosity = 40 + np.random.normal(0, 3) - (runtime_hours/4000)*5
+        bearing_temp_diff = abs(temperature - ambient_temp - 20) + np.random.normal(0, 2)
+        vibration_fft_1x = vibration_rms * np.random.uniform(0.8, 1.2)
+        vibration_fft_2x = vibration_fft_1x * np.random.uniform(0.1, 0.5)
+        vibration_fft_3x = vibration_fft_1x * np.random.uniform(0.05, 0.2)
         
-        # Adjust RUL for non-failure samples to be higher
-        none_idx = failure_type == 'None'
-        rul[none_idx] = np.random.uniform(200, 1000, np.sum(none_idx))
-    
-    df = pd.DataFrame({
-        'timestamp': pd.date_range(end=datetime.now(), periods=n_samples, freq='H'),
-        'machine_id': np.random.choice(['M001', 'M002', 'M003', 'M004', 'M005'], n_samples),
-        'temperature': np.clip(temperature, 20, 150),
-        'vibration': np.clip(vibration, 0, 2.5),
-        'pressure': np.clip(pressure, 50, 200),
-        'humidity': np.clip(humidity, 10, 90),
-        'runtime_hours': np.clip(runtime, 0, 10000),
-        'load_percent': np.clip(load, 0, 100),
-        'failure_type': failure_type,
-        'RUL_hours': np.clip(rul, 0, 1000)
-    })
-    
-    # Add some missing values for realism
-    for col in ['temperature', 'vibration', 'pressure']:
-        df.loc[df.sample(frac=0.02).index, col] = np.nan
-    
-    return df
-
-def generate_maintenance_schedule(predictions_df):
-    """
-    Generate recommended maintenance dates based on predicted RUL and failure probability.
-    """
-    schedule = []
-    today = datetime.now().date()
-    
-    for idx, row in predictions_df.iterrows():
-        rul = row.get('predicted_RUL_hours', 500)
-        failure_prob = row.get('failure_probability', 0.0)
-        failure_type = row.get('predicted_failure_type', 'None')
+        # Maintenance history
+        days_since_last_maintenance = np.random.exponential(30) + runtime_hours/24
+        maintenance_count = np.random.poisson(runtime_hours/1000)
         
-        # Determine urgency
-        if failure_type != 'None' or failure_prob > 0.7:
-            urgency = "Critical"
-            days_ahead = max(1, int(rul / 24))
-        elif failure_prob > 0.3:
-            urgency = "High"
-            days_ahead = max(3, int(rul / 24))
-        elif failure_prob > 0.1:
-            urgency = "Medium"
-            days_ahead = max(7, int(rul / 24))
+        # Failure logic (correlated with degradation)
+        failure_prob = (
+            0.3 * (vibration_rms > 2.5) +
+            0.2 * (temperature > 45) +
+            0.2 * (pressure > 110) +
+            0.15 * (bearing_temp_diff > 10) +
+            0.15 * (days_since_last_maintenance > 60)
+        )
+        failure = 1 if np.random.random() < failure_prob else 0
+        
+        # Time to failure (if failure occurred)
+        if failure:
+            time_to_failure = np.random.uniform(0, 30)
         else:
-            urgency = "Low"
-            days_ahead = max(30, int(rul / 24))
+            time_to_failure = np.random.uniform(30, 365)
         
-        recommended_date = today + timedelta(days=days_ahead)
-        schedule.append({
-            'machine_id': row.get('machine_id', 'Unknown'),
-            'failure_type': failure_type,
-            'probability': failure_prob,
-            'rul_hours': rul,
-            'urgency': urgency,
-            'recommended_maintenance': recommended_date.strftime('%Y-%m-%d'),
-            'notes': f"Predicted {failure_type} failure with {failure_prob:.1%} probability."
+        # Timestamp
+        timestamp = current_date - timedelta(days=np.random.uniform(0, 365))
+        
+        data.append({
+            'timestamp': timestamp,
+            'machine_id': machine_id,
+            'runtime_hours': runtime_hours,
+            'load_percent': load_percent,
+            'ambient_temp': ambient_temp,
+            'vibration_rms': vibration_rms,
+            'temperature': temperature,
+            'pressure': pressure,
+            'current_draw': current_draw,
+            'voltage': voltage,
+            'oil_viscosity': oil_viscosity,
+            'bearing_temp_diff': bearing_temp_diff,
+            'vibration_fft_1x': vibration_fft_1x,
+            'vibration_fft_2x': vibration_fft_2x,
+            'vibration_fft_3x': vibration_fft_3x,
+            'days_since_last_maintenance': days_since_last_maintenance,
+            'maintenance_count': maintenance_count,
+            'failure': failure,
+            'time_to_failure': time_to_failure
         })
     
-    return pd.DataFrame(schedule)
+    df = pd.DataFrame(data)
+    df = df.sort_values('timestamp').reset_index(drop=True)
+    return df
 
-# =============================================================================
-# Machine Learning Pipeline
-# =============================================================================
-def preprocess_data(df, train=True, scaler=None, label_encoder=None):
+# ===================================================================
+# Model Training Pipeline
+# ===================================================================
+@st.cache_resource
+def train_and_save_model(df: pd.DataFrame) -> Tuple[RandomForestClassifier, StandardScaler, List[str], Dict]:
     """
-    Preprocess data for ML: handle missing values, scale features, encode labels.
+    Train a Random Forest model with hyperparameter tuning.
+    Returns model, scaler, feature names, and metrics.
     """
-    feature_cols = ['temperature', 'vibration', 'pressure', 'humidity', 'runtime_hours', 'load_percent']
+    # Feature engineering
+    feature_cols = [
+        'runtime_hours', 'load_percent', 'ambient_temp', 'vibration_rms',
+        'temperature', 'pressure', 'current_draw', 'voltage', 'oil_viscosity',
+        'bearing_temp_diff', 'vibration_fft_1x', 'vibration_fft_2x', 'vibration_fft_3x',
+        'days_since_last_maintenance', 'maintenance_count'
+    ]
     
     X = df[feature_cols].copy()
+    y = df['failure'].copy()
     
-    # Impute missing values
-    imputer = SimpleImputer(strategy='median')
-    X_imputed = imputer.fit_transform(X) if train else imputer.transform(X)
-    
-    # Scale features
-    if scaler is None:
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X_imputed)
-    else:
-        X_scaled = scaler.transform(X_imputed)
-    
-    result = {'X_scaled': X_scaled, 'scaler': scaler}
-    
-    # For training, also process y
-    if train and 'failure_type' in df.columns and 'RUL_hours' in df.columns:
-        y_class = df['failure_type'].values
-        y_reg = df['RUL_hours'].values
-        
-        if label_encoder is None:
-            label_encoder = LabelEncoder()
-            y_class_enc = label_encoder.fit_transform(y_class)
-        else:
-            y_class_enc = label_encoder.transform(y_class)
-        
-        result['y_class'] = y_class_enc
-        result['y_reg'] = y_reg
-        result['label_encoder'] = label_encoder
-    
-    return result
-
-def train_models(df):
-    """
-    Train Random Forest classifier and regressor on the provided dataframe.
-    """
-    preproc = preprocess_data(df, train=True)
-    X = preproc['X_scaled']
-    y_class = preproc['y_class']
-    y_reg = preproc['y_reg']
-    scaler = preproc['scaler']
-    label_encoder = preproc['label_encoder']
-    
-    # Split data
-    X_train, X_test, y_class_train, y_class_test, y_reg_train, y_reg_test = train_test_split(
-        X, y_class, y_reg, test_size=0.2, random_state=42
+    # Train/test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
     )
     
-    # Train classifier
-    clf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-    clf.fit(X_train, y_class_train)
-    class_pred = clf.predict(X_test)
+    # Preprocessing pipeline
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
     
-    # Train regressor
-    reg = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
-    reg.fit(X_train, y_reg_train)
-    reg_pred = reg.predict(X_test)
-    
-    # Metrics
-    class_report = classification_report(y_class_test, class_pred, target_names=label_encoder.classes_, output_dict=True)
-    reg_mse = mean_squared_error(y_reg_test, reg_pred)
-    reg_r2 = r2_score(y_reg_test, reg_pred)
-    
-    models = {
-        'classifier': clf,
-        'regressor': reg,
-        'scaler': scaler,
-        'label_encoder': label_encoder,
-        'metrics': {
-            'classification_report': class_report,
-            'regression_mse': reg_mse,
-            'regression_r2': reg_r2
-        }
+    # Hyperparameter tuning with GridSearchCV
+    param_grid = {
+        'n_estimators': [100, 200],
+        'max_depth': [10, 20, None],
+        'min_samples_split': [2, 5],
+        'min_samples_leaf': [1, 2],
+        'class_weight': ['balanced', None]
     }
     
-    # Save to session state and optionally to S3
-    st.session_state['trained_models'] = models
-    st.session_state.model_trained = True
+    rf = RandomForestClassifier(random_state=42, n_jobs=-1)
+    grid_search = GridSearchCV(
+        rf, param_grid, cv=3, scoring='f1', n_jobs=-1, verbose=0
+    )
+    grid_search.fit(X_train_scaled, y_train)
     
-    # Save to S3 if connected
-    if st.session_state.s3_client:
-        save_model_to_s3(clf, CLASSIFIER_MODEL_FILE)
-        save_model_to_s3(reg, REGRESSOR_MODEL_FILE)
-        save_model_to_s3(scaler, SCALER_FILE)
-        save_model_to_s3(label_encoder, LABEL_ENCODER_FILE)
-    
-    return models
-
-def load_or_train_models():
-    """
-    Attempt to load models from S3, else train on synthetic data.
-    """
-    if st.session_state.s3_client:
-        # Try loading from S3
-        clf = load_model_from_s3(CLASSIFIER_MODEL_FILE)
-        reg = load_model_from_s3(REGRESSOR_MODEL_FILE)
-        scaler = load_model_from_s3(SCALER_FILE)
-        le = load_model_from_s3(LABEL_ENCODER_FILE)
-        if all([clf, reg, scaler, le]):
-            models = {
-                'classifier': clf,
-                'regressor': reg,
-                'scaler': scaler,
-                'label_encoder': le,
-                'metrics': None  # Could recompute if needed
-            }
-            st.session_state['trained_models'] = models
-            st.session_state.model_trained = True
-            return models
-    
-    # Train on synthetic data
-    with st.spinner("Training models on synthetic data..."):
-        df_train = generate_synthetic_machine_data(n_samples=2000, include_failures=True)
-        models = train_models(df_train)
-    return models
-
-def predict_from_dataframe(df, models):
-    """
-    Use trained models to predict failure type and RUL for new data.
-    """
-    preproc = preprocess_data(df, train=False, scaler=models['scaler'])
-    X_scaled = preproc['X_scaled']
-    
-    clf = models['classifier']
-    reg = models['regressor']
-    le = models['label_encoder']
+    best_model = grid_search.best_estimator_
     
     # Predictions
-    class_pred_enc = clf.predict(X_scaled)
-    class_proba = clf.predict_proba(X_scaled)
-    rul_pred = reg.predict(X_scaled)
+    y_pred = best_model.predict(X_test_scaled)
+    y_pred_proba = best_model.predict_proba(X_test_scaled)[:, 1]
     
-    # Get failure probabilities
-    failure_proba = 1 - class_proba[:, le.transform(['None'])[0]]
-    
-    df_result = df.copy()
-    df_result['predicted_failure_type'] = le.inverse_transform(class_pred_enc)
-    df_result['failure_probability'] = failure_proba
-    df_result['predicted_RUL_hours'] = rul_pred
-    
-    return df_result
-
-# =============================================================================
-# UI Helper Functions
-# =============================================================================
-def local_css():
-    """Inject custom CSS for better styling."""
-    st.markdown("""
-    <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
+    # Metrics
+    metrics = {
+        'accuracy': accuracy_score(y_test, y_pred),
+        'precision': precision_score(y_test, y_pred),
+        'recall': recall_score(y_test, y_pred),
+        'f1_score': f1_score(y_test, y_pred),
+        'roc_auc': auc(*roc_curve(y_test, y_pred_proba)[:2]),
+        'best_params': grid_search.best_params_,
+        'feature_importance': dict(zip(feature_cols, best_model.feature_importances_)),
+        'confusion_matrix': confusion_matrix(y_test, y_pred).tolist(),
+        'classification_report': classification_report(y_test, y_pred, output_dict=True)
     }
-    .card {
-        background-color: #f8f9fa;
-        border-radius: 10px;
-        padding: 1.5rem;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin-bottom: 1rem;
-    }
-    .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border-radius: 10px;
-        padding: 1rem;
-        text-align: center;
-    }
-    .stButton>button {
-        width: 100%;
-        border-radius: 20px;
-        height: 3em;
-        font-weight: bold;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-def show_logo():
-    """Display Nexus logo."""
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        st.image("https://via.placeholder.com/300x100/1f77b4/ffffff?text=NEXUS+PM", use_column_width=True)
-
-def download_link(object_to_download, download_filename, download_link_text):
-    """Generate a download link for a DataFrame (Excel)."""
-    if isinstance(object_to_download, pd.DataFrame):
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            object_to_download.to_excel(writer, index=False, sheet_name='Predictions')
-        output.seek(0)
-        b64 = base64.b64encode(output.read()).decode()
-        href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{download_filename}">📥 {download_link_text}</a>'
-        return href
-    return ""
-
-def send_email_notification(recipient, subject, body):
-    """Simulate sending email (for demonstration)."""
-    # In production, configure SMTP settings
-    st.info(f"📧 Email notification would be sent to {recipient}:\nSubject: {subject}")
-    return True
-
-# =============================================================================
-# Page Components
-# =============================================================================
-def login_page():
-    """Render login page."""
-    local_css()
-    show_logo()
-    st.markdown("<h1 class='main-header'>🔐 Nexus Predictive Maintenance</h1>", unsafe_allow_html=True)
     
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        with st.form("login_form"):
-            email = st.text_input("Email", placeholder="your@email.com")
-            password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Login")
-            
-            if submitted:
-                if not email or not password:
-                    st.error("Please enter email and password.")
-                else:
-                    role = authenticate_user(email, password)
-                    if role:
-                        st.session_state.logged_in = True
-                        st.session_state.user_email = email
-                        st.session_state.is_admin = (role == "admin")
-                        st.session_state.page = "Dashboard"
-                        st.rerun()
-                    else:
-                        st.error("Invalid credentials.")
-        
-        st.markdown("---")
-        st.info("Demo Admin: kareemeltemsah7@gmail.com / temsah1")
-        
-        # Register option (for demo)
-        with st.expander("Register New Account"):
-            with st.form("register_form"):
-                new_email = st.text_input("New Email")
-                new_pass = st.text_input("New Password", type="password")
-                confirm_pass = st.text_input("Confirm Password", type="password")
-                if st.form_submit_button("Register"):
-                    if new_pass != confirm_pass:
-                        st.error("Passwords do not match.")
-                    elif len(new_pass) < 6:
-                        st.error("Password must be at least 6 characters.")
-                    else:
-                        success, msg = add_user(new_email, new_pass, role="user")
-                        if success:
-                            st.success(msg + " You can now login.")
-                        else:
-                            st.error(msg)
+    return best_model, scaler, feature_cols, metrics
 
-def dashboard_page():
-    """Main dashboard after login."""
-    local_css()
-    st.markdown(f"<h1 class='main-header'>👋 Welcome, {st.session_state.user_email}</h1>", unsafe_allow_html=True)
+# ===================================================================
+# Prediction & Maintenance Scheduling
+# ===================================================================
+def predict_failure(model, scaler, feature_names, input_df: pd.DataFrame) -> pd.DataFrame:
+    """Predict failure probability and class for new data"""
+    # Ensure all required features are present
+    missing_cols = set(feature_names) - set(input_df.columns)
+    if missing_cols:
+        raise ValueError(f"Missing columns in input data: {missing_cols}")
     
-    # Quick stats cards
-    col1, col2, col3, col4 = st.columns(4)
+    X = input_df[feature_names].copy()
+    
+    # Handle missing values
+    imputer = SimpleImputer(strategy='median')
+    X_imputed = imputer.fit_transform(X)
+    
+    # Scale
+    X_scaled = scaler.transform(X_imputed)
+    
+    # Predict
+    proba = model.predict_proba(X_scaled)[:, 1]
+    pred = model.predict(X_scaled)
+    
+    result_df = input_df.copy()
+    result_df['failure_probability'] = proba
+    result_df['predicted_failure'] = pred
+    result_df['risk_level'] = pd.cut(
+        proba, 
+        bins=[0, 0.3, 0.6, 1.0], 
+        labels=['Low', 'Medium', 'High']
+    )
+    
+    return result_df
+
+def generate_maintenance_schedule(predictions_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Generate recommended maintenance dates based on failure probability.
+    """
+    schedule = predictions_df.copy()
+    
+    # Define maintenance urgency based on risk
+    def get_maintenance_days(row):
+        prob = row['failure_probability']
+        if prob >= 0.7:
+            return np.random.randint(1, 4)  # Immediate (1-3 days)
+        elif prob >= 0.4:
+            return np.random.randint(4, 10)  # Soon (4-9 days)
+        elif prob >= 0.2:
+            return np.random.randint(10, 21)  # Scheduled (10-20 days)
+        else:
+            return np.random.randint(30, 60)  # Routine (30-60 days)
+    
+    schedule['days_until_maintenance'] = schedule.apply(get_maintenance_days, axis=1)
+    schedule['recommended_maintenance_date'] = (
+        datetime.now() + pd.to_timedelta(schedule['days_until_maintenance'], unit='D')
+    ).dt.strftime('%Y-%m-%d')
+    
+    # Priority ranking
+    schedule['priority'] = pd.cut(
+        schedule['failure_probability'],
+        bins=[0, 0.3, 0.6, 1.0],
+        labels=['Low', 'Medium', 'High']
+    )
+    
+    return schedule
+
+# ===================================================================
+# Excel Template Generation
+# ===================================================================
+def create_excel_template() -> bytes:
+    """Generate an Excel template with required columns for upload"""
+    template_cols = [
+        'timestamp', 'machine_id', 'runtime_hours', 'load_percent', 'ambient_temp',
+        'vibration_rms', 'temperature', 'pressure', 'current_draw', 'voltage',
+        'oil_viscosity', 'bearing_temp_diff', 'vibration_fft_1x', 'vibration_fft_2x',
+        'vibration_fft_3x', 'days_since_last_maintenance', 'maintenance_count'
+    ]
+    
+    # Create sample rows
+    sample_data = {
+        'timestamp': [datetime.now().strftime('%Y-%m-%d %H:%M:%S')] * 3,
+        'machine_id': ['M001', 'M002', 'M003'],
+        'runtime_hours': [1200.5, 3500.2, 800.0],
+        'load_percent': [75.0, 92.0, 45.0],
+        'ambient_temp': [25.5, 28.0, 22.0],
+        'vibration_rms': [1.8, 3.2, 1.2],
+        'temperature': [42.0, 55.0, 35.0],
+        'pressure': [102.0, 115.0, 98.0],
+        'current_draw': [18.5, 25.0, 12.0],
+        'voltage': [219.0, 218.0, 221.0],
+        'oil_viscosity': [38.0, 32.0, 42.0],
+        'bearing_temp_diff': [12.0, 22.0, 5.0],
+        'vibration_fft_1x': [1.5, 2.8, 1.0],
+        'vibration_fft_2x': [0.4, 1.2, 0.2],
+        'vibration_fft_3x': [0.1, 0.5, 0.05],
+        'days_since_last_maintenance': [45, 120, 15],
+        'maintenance_count': [2, 5, 1]
+    }
+    
+    df_template = pd.DataFrame(sample_data)
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_template.to_excel(writer, sheet_name='Machine Data', index=False)
+        # Add instructions sheet
+        instructions = pd.DataFrame({
+            'Column': template_cols,
+            'Description': [
+                'Timestamp of reading (YYYY-MM-DD HH:MM:SS)',
+                'Unique machine identifier',
+                'Total runtime in hours',
+                'Current load percentage (0-100)',
+                'Ambient temperature (°C)',
+                'Vibration RMS (mm/s)',
+                'Machine temperature (°C)',
+                'Operating pressure (psi)',
+                'Current draw (Amps)',
+                'Voltage (Volts)',
+                'Oil viscosity (cSt)',
+                'Bearing temperature difference (°C)',
+                'Vibration FFT 1x amplitude',
+                'Vibration FFT 2x amplitude',
+                'Vibration FFT 3x amplitude',
+                'Days since last maintenance',
+                'Total maintenance count'
+            ],
+            'Required': ['Yes'] * len(template_cols)
+        })
+        instructions.to_excel(writer, sheet_name='Instructions', index=False)
+    
+    return output.getvalue()
+
+def to_excel_download(df: pd.DataFrame, sheet_name: str = 'Predictions') -> bytes:
+    """Convert dataframe to Excel bytes for download"""
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+    return output.getvalue()
+
+# ===================================================================
+# Visualization Functions
+# ===================================================================
+def plot_feature_importance(metrics: Dict) -> go.Figure:
+    """Create feature importance bar chart"""
+    feat_imp = metrics['feature_importance']
+    sorted_feat = sorted(feat_imp.items(), key=lambda x: x[1], reverse=True)
+    features = [x[0] for x in sorted_feat[:15]]
+    importances = [x[1] for x in sorted_feat[:15]]
+    
+    fig = go.Figure(data=[
+        go.Bar(
+            x=importances,
+            y=features,
+            orientation='h',
+            marker=dict(
+                color=importances,
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title="Importance")
+            ),
+            text=[f'{v:.3f}' for v in importances],
+            textposition='outside'
+        )
+    ])
+    fig.update_layout(
+        title="Top 15 Feature Importances",
+        xaxis_title="Importance",
+        yaxis_title="Feature",
+        height=500,
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white')
+    )
+    return fig
+
+def plot_confusion_matrix(metrics: Dict) -> go.Figure:
+    """Plot interactive confusion matrix"""
+    cm = np.array(metrics['confusion_matrix'])
+    labels = ['No Failure', 'Failure']
+    
+    fig = px.imshow(
+        cm,
+        text_auto=True,
+        labels=dict(x="Predicted", y="Actual", color="Count"),
+        x=labels,
+        y=labels,
+        color_continuous_scale='Reds'
+    )
+    fig.update_layout(
+        title="Confusion Matrix",
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white')
+    )
+    return fig
+
+def plot_roc_curve(metrics: Dict, y_test, y_pred_proba) -> go.Figure:
+    """Plot ROC curve"""
+    fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
+    roc_auc = metrics['roc_auc']
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=fpr, y=tpr,
+        mode='lines',
+        name=f'ROC (AUC = {roc_auc:.3f})',
+        line=dict(color='#FF4B4B', width=3)
+    ))
+    fig.add_trace(go.Scatter(
+        x=[0,1], y=[0,1],
+        mode='lines',
+        name='Random',
+        line=dict(dash='dash', color='gray')
+    ))
+    fig.update_layout(
+        title="ROC Curve",
+        xaxis_title="False Positive Rate",
+        yaxis_title="True Positive Rate",
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'),
+        showlegend=True
+    )
+    return fig
+
+def plot_risk_distribution(predictions_df: pd.DataFrame) -> go.Figure:
+    """Pie chart of risk levels"""
+    risk_counts = predictions_df['risk_level'].value_counts()
+    colors = {'Low': '#00CC96', 'Medium': '#FFA15A', 'High': '#EF553B'}
+    
+    fig = go.Figure(data=[go.Pie(
+        labels=risk_counts.index,
+        values=risk_counts.values,
+        hole=0.4,
+        marker=dict(colors=[colors.get(level, '#808080') for level in risk_counts.index]),
+        textinfo='label+percent',
+        textfont=dict(color='white')
+    )])
+    fig.update_layout(
+        title="Risk Level Distribution",
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white')
+    )
+    return fig
+
+def plot_sensor_trends(df: pd.DataFrame) -> go.Figure:
+    """Time series plot of key sensors"""
+    if 'timestamp' in df.columns:
+        df = df.sort_values('timestamp')
+    
+    fig = make_subplots(
+        rows=3, cols=2,
+        subplot_titles=('Vibration RMS', 'Temperature', 'Pressure', 
+                        'Current Draw', 'Oil Viscosity', 'Bearing Temp Diff'),
+        vertical_spacing=0.1
+    )
+    
+    fig.add_trace(
+        go.Scatter(x=df.index, y=df['vibration_rms'], mode='lines', name='Vibration',
+                   line=dict(color='#FF4B4B')),
+        row=1, col=1
+    )
+    fig.add_trace(
+        go.Scatter(x=df.index, y=df['temperature'], mode='lines', name='Temperature',
+                   line=dict(color='#FFA15A')),
+        row=1, col=2
+    )
+    fig.add_trace(
+        go.Scatter(x=df.index, y=df['pressure'], mode='lines', name='Pressure',
+                   line=dict(color='#00CC96')),
+        row=2, col=1
+    )
+    fig.add_trace(
+        go.Scatter(x=df.index, y=df['current_draw'], mode='lines', name='Current',
+                   line=dict(color='#AB63FA')),
+        row=2, col=2
+    )
+    fig.add_trace(
+        go.Scatter(x=df.index, y=df['oil_viscosity'], mode='lines', name='Viscosity',
+                   line=dict(color='#19D3F3')),
+        row=3, col=1
+    )
+    fig.add_trace(
+        go.Scatter(x=df.index, y=df['bearing_temp_diff'], mode='lines', name='Bearing ΔT',
+                   line=dict(color='#FF6692')),
+        row=3, col=2
+    )
+    
+    fig.update_layout(
+        height=700,
+        showlegend=False,
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white')
+    )
+    return fig
+
+# ===================================================================
+# Admin Analytics Dashboard Components
+# ===================================================================
+def admin_dashboard():
+    """Render the admin analytics dashboard"""
+    st.title("🔐 Admin Analytics Dashboard")
+    st.markdown("---")
+    
+    if st.session_state.data is None:
+        st.info("No data loaded. Generating synthetic dataset for demonstration...")
+        with st.spinner("Generating data and training model..."):
+            df = generate_synthetic_machine_data(5000)
+            st.session_state.data = df
+            model, scaler, features, metrics = train_and_save_model(df)
+            st.session_state.model = model
+            st.session_state.scaler = scaler
+            st.session_state.feature_names = features
+            st.session_state.model_metrics = metrics
+        st.success("Data and model ready!")
+    
+    df = st.session_state.data
+    metrics = st.session_state.model_metrics
+    
+    # KPI Row
+    st.subheader("📊 Key Performance Indicators")
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        st.markdown("<div class='metric-card'><h3>🏭 Machines</h3><h2>24</h2><p>Monitored</p></div>", unsafe_allow_html=True)
+        st.metric("Total Records", f"{len(df):,}", delta=None)
     with col2:
-        st.markdown("<div class='metric-card'><h3>⚠️ Alerts</h3><h2>3</h2><p>Critical</p></div>", unsafe_allow_html=True)
+        failure_rate = df['failure'].mean() * 100
+        st.metric("Failure Rate", f"{failure_rate:.2f}%", 
+                  delta=f"{failure_rate - 5:.2f}%" if failure_rate > 5 else f"{failure_rate - 5:.2f}%")
     with col3:
-        st.markdown("<div class='metric-card'><h3>📊 Uptime</h3><h2>98.2%</h2><p>Last 30 days</p></div>", unsafe_allow_html=True)
+        st.metric("Model Accuracy", f"{metrics['accuracy']:.2%}")
     with col4:
-        st.markdown("<div class='metric-card'><h3>🔧 Next Maintenance</h3><h2>2 days</h2><p>Machine M003</p></div>", unsafe_allow_html=True)
+        st.metric("Precision", f"{metrics['precision']:.2%}")
+    with col5:
+        st.metric("Recall", f"{metrics['recall']:.2%}")
     
     st.markdown("---")
     
-    # Recent activity and quick actions
-    col_left, col_right = st.columns([2,1])
-    
-    with col_left:
-        st.subheader("📈 System Health Overview")
-        # Sample plot
-        dates = pd.date_range(end=datetime.now(), periods=30, freq='D')
-        health_score = 100 - np.random.uniform(0, 15, 30)
-        fig = px.line(x=dates, y=health_score, title="Overall Equipment Health Trend",
-                     labels={'x':'Date', 'y':'Health Score (%)'})
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.subheader("📋 Recent Predictions")
-        if 'last_predictions' in st.session_state:
-            st.dataframe(st.session_state.last_predictions.head(5), use_container_width=True)
-        else:
-            st.info("No predictions yet. Go to Predictive Maintenance to upload data.")
-    
-    with col_right:
-        st.subheader("⚡ Quick Actions")
-        if st.button("📤 Upload New Data", use_container_width=True):
-            st.session_state.page = "Predictive Maintenance"
-            st.rerun()
-        if st.button("📊 View Reports", use_container_width=True):
-            st.session_state.page = "Reports"
-            st.rerun()
-        if st.button("🔄 Refresh Models", use_container_width=True):
-            with st.spinner("Retraining models..."):
-                df = generate_synthetic_machine_data(2000)
-                models = train_models(df)
-                st.success("Models retrained successfully!")
-        
-        st.subheader("📅 Upcoming Maintenance")
-        maintenance_tasks = pd.DataFrame({
-            'Machine': ['M001', 'M003', 'M005'],
-            'Due Date': [(datetime.now() + timedelta(days=d)).strftime('%Y-%m-%d') for d in [1, 3, 5]],
-            'Type': ['Bearing', 'Overheat', 'Seal']
-        })
-        st.dataframe(maintenance_tasks, use_container_width=True)
-
-def predictive_maintenance_page():
-    """Page for uploading Excel and getting predictions."""
-    local_css()
-    st.markdown("<h1 class='main-header'>🔮 Predictive Maintenance Analysis</h1>", unsafe_allow_html=True)
-    
-    # Ensure models are loaded
-    if not st.session_state.model_trained:
-        with st.spinner("Loading/training models..."):
-            models = load_or_train_models()
-    else:
-        models = st.session_state.get('trained_models')
-    
-    if models is None:
-        st.error("Models could not be loaded. Please contact admin.")
-        return
-    
-    # Upload section
-    st.markdown("### 📁 Upload Sensor Data (Excel)")
-    st.markdown("Expected columns: timestamp, machine_id, temperature, vibration, pressure, humidity, runtime_hours, load_percent")
-    
-    uploaded_file = st.file_uploader("Choose an Excel file", type=['xlsx', 'xls'])
-    
-    if uploaded_file is not None:
-        try:
-            df_input = pd.read_excel(uploaded_file)
-            st.success(f"✅ File uploaded: {uploaded_file.name} ({len(df_input)} rows)")
-            
-            # Show preview
-            with st.expander("Preview Uploaded Data"):
-                st.dataframe(df_input.head(10))
-            
-            # Check required columns
-            required_cols = ['temperature', 'vibration', 'pressure', 'humidity', 'runtime_hours', 'load_percent']
-            missing = [col for col in required_cols if col not in df_input.columns]
-            if missing:
-                st.error(f"Missing required columns: {missing}")
-                return
-            
-            # Add timestamp and machine_id if missing
-            if 'timestamp' not in df_input.columns:
-                df_input['timestamp'] = pd.Timestamp.now()
-            if 'machine_id' not in df_input.columns:
-                df_input['machine_id'] = 'Uploaded'
-            
-            # Predict
-            with st.spinner("Running predictions..."):
-                predictions_df = predict_from_dataframe(df_input, models)
-                st.session_state.last_predictions = predictions_df
-            
-            # Display results
-            st.markdown("---")
-            st.subheader("📊 Prediction Results")
-            
-            # Summary metrics
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                failure_count = (predictions_df['predicted_failure_type'] != 'None').sum()
-                st.metric("Machines with Predicted Failure", failure_count)
-            with col2:
-                avg_rul = predictions_df['predicted_RUL_hours'].mean()
-                st.metric("Average Remaining Life (hours)", f"{avg_rul:.1f}")
-            with col3:
-                high_risk = (predictions_df['failure_probability'] > 0.7).sum()
-                st.metric("High Risk (>70%)", high_risk)
-            
-            # Detailed table
-            st.dataframe(predictions_df, use_container_width=True)
-            
-            # Visualization
-            st.subheader("📈 Failure Probability Distribution")
-            fig = px.histogram(predictions_df, x='failure_probability', nbins=20,
-                              title="Histogram of Failure Probability",
-                              labels={'failure_probability':'Failure Probability'})
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Maintenance Schedule
-            st.subheader("🗓️ Recommended Maintenance Schedule")
-            schedule_df = generate_maintenance_schedule(predictions_df)
-            st.dataframe(schedule_df, use_container_width=True)
-            
-            # Download options
-            st.markdown("### 📥 Export Results")
-            col_dl1, col_dl2 = st.columns(2)
-            with col_dl1:
-                # Excel download link
-                excel_link = download_link(predictions_df, "nexus_predictions.xlsx", "Download Predictions (Excel)")
-                st.markdown(excel_link, unsafe_allow_html=True)
-            with col_dl2:
-                schedule_link = download_link(schedule_df, "maintenance_schedule.xlsx", "Download Maintenance Schedule")
-                st.markdown(schedule_link, unsafe_allow_html=True)
-            
-            # Upload to S3 option
-            if st.session_state.s3_client:
-                if st.button("☁️ Save Results to Cloud (S3)"):
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                        predictions_df.to_excel(writer, sheet_name='Predictions', index=False)
-                        schedule_df.to_excel(writer, sheet_name='Schedule', index=False)
-                    buffer.seek(0)
-                    s3_key = f"results/{datetime.now().strftime('%Y%m%d_%H%M%S')}_nexus_results.xlsx"
-                    if upload_file_to_s3(buffer, s3_key):
-                        st.success(f"Results saved to S3: {s3_key}")
-            
-            # Alert notifications
-            if failure_count > 0:
-                st.warning(f"⚠️ {failure_count} potential failures detected. Review maintenance schedule.")
-                if st.button("📧 Send Alert to Maintenance Team"):
-                    # Simulate email
-                    send_email_notification(
-                        "maintenance@nexus.com",
-                        f"Alert: {failure_count} Predicted Failures",
-                        f"Please review the latest predictive maintenance report. High risk items need immediate attention."
-                    )
-                    st.success("Alert notification sent (simulated).")
-        
-        except Exception as e:
-            st.error(f"Error processing file: {str(e)}")
-    else:
-        # Show sample data download
-        st.info("👆 Upload an Excel file with sensor readings to get predictions.")
-        st.markdown("### 📋 Sample Data Template")
-        sample_df = generate_synthetic_machine_data(n_samples=10, include_failures=False).drop(columns=['failure_type','RUL_hours'])
-        sample_link = download_link(sample_df, "nexus_sample_data.xlsx", "Download Sample Template")
-        st.markdown(sample_link, unsafe_allow_html=True)
-        
-        # Option to use demo data
-        if st.button("🚀 Try with Demo Data"):
-            demo_df = generate_synthetic_machine_data(n_samples=50, include_failures=True)
-            demo_df = demo_df.drop(columns=['failure_type','RUL_hours'])  # Simulate user uploaded data without labels
-            with st.spinner("Running demo predictions..."):
-                predictions_df = predict_from_dataframe(demo_df, models)
-                st.session_state.last_predictions = predictions_df
-                st.success("Demo data processed! See results below.")
-                st.dataframe(predictions_df.head(10))
-                st.rerun()
-
-def admin_panel_page():
-    """Admin dashboard for user management and system oversight."""
-    local_css()
-    st.markdown("<h1 class='main-header'>🛡️ Admin Control Panel</h1>", unsafe_allow_html=True)
-    
-    if not st.session_state.is_admin:
-        st.error("Access denied. Admin privileges required.")
-        return
-    
-    tab1, tab2, tab3, tab4 = st.tabs(["👥 User Management", "📊 System Metrics", "🤖 Model Management", "☁️ Cloud Storage"])
+    # Model Performance Section
+    st.subheader("🤖 Model Performance Analysis")
+    tab1, tab2, tab3, tab4 = st.tabs(["Confusion Matrix", "ROC Curve", "Feature Importance", "Metrics Report"])
     
     with tab1:
-        st.subheader("User Accounts")
-        users = get_all_users()
-        users_df = pd.DataFrame(users)
-        st.dataframe(users_df, use_container_width=True)
-        
-        st.markdown("---")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("Add New User")
-            with st.form("admin_add_user"):
-                new_email = st.text_input("Email")
-                new_pass = st.text_input("Password", type="password")
-                role = st.selectbox("Role", ["user", "admin"])
-                if st.form_submit_button("Add User"):
-                    if new_email and new_pass:
-                        success, msg = add_user(new_email, new_pass, role)
-                        if success:
-                            st.success(msg)
-                            st.rerun()
-                        else:
-                            st.error(msg)
-        with col2:
-            st.subheader("Delete User")
-            with st.form("admin_delete_user"):
-                del_email = st.selectbox("Select user to delete", 
-                                        [u['email'] for u in users if u['email'] != ADMIN_EMAIL])
-                if st.form_submit_button("Delete User"):
-                    success, msg = delete_user(del_email)
-                    if success:
-                        st.success(msg)
-                        st.rerun()
-                    else:
-                        st.error(msg)
+        fig_cm = plot_confusion_matrix(metrics)
+        st.plotly_chart(fig_cm, use_container_width=True)
     
     with tab2:
-        st.subheader("System Usage Metrics")
-        # Placeholder metrics
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Predictions Made", np.random.randint(500, 2000))
-        col2.metric("Active Users (24h)", len([u for u in users if u['last_login'] and 
-                    (datetime.now() - datetime.fromisoformat(u['last_login'])).days < 1]))
-        col3.metric("Model Accuracy", "94.2%")
-        
-        # Activity log
-        st.subheader("Recent Activity")
-        log_data = pd.DataFrame({
-            'Timestamp': pd.date_range(end=datetime.now(), periods=10, freq='H'),
-            'User': np.random.choice([u['email'] for u in users], 10),
-            'Action': np.random.choice(['Login', 'Upload Data', 'Download Report', 'View Dashboard'], 10)
-        })
-        st.dataframe(log_data, use_container_width=True)
+        # Need y_test and y_pred_proba for ROC; we can recompute or store in session
+        X = df[st.session_state.feature_names]
+        y = df['failure']
+        _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+        X_test_scaled = st.session_state.scaler.transform(X_test)
+        y_pred_proba = st.session_state.model.predict_proba(X_test_scaled)[:, 1]
+        fig_roc = plot_roc_curve(metrics, y_test, y_pred_proba)
+        st.plotly_chart(fig_roc, use_container_width=True)
     
     with tab3:
-        st.subheader("Machine Learning Models")
-        if st.button("🔄 Retrain Models with Latest Data"):
-            with st.spinner("Retraining models..."):
-                df_train = generate_synthetic_machine_data(n_samples=3000)
-                models = train_models(df_train)
-                st.success("Models retrained successfully!")
-                st.json(models['metrics'])
+        fig_fi = plot_feature_importance(metrics)
+        st.plotly_chart(fig_fi, use_container_width=True)
         
-        if 'trained_models' in st.session_state:
-            models = st.session_state.trained_models
-            st.write("**Current Model Performance:**")
-            if models['metrics']:
-                st.json(models['metrics'])
-            else:
-                st.info("Metrics not available.")
-        
-        st.subheader("Feature Importance")
-        if 'trained_models' in st.session_state:
-            clf = st.session_state.trained_models['classifier']
-            feature_names = ['temperature', 'vibration', 'pressure', 'humidity', 'runtime_hours', 'load_percent']
-            importance = clf.feature_importances_
-            fig = px.bar(x=feature_names, y=importance, title="Feature Importance (Classifier)")
-            st.plotly_chart(fig, use_container_width=True)
+        # SHAP analysis (optional, compute if needed)
+        if st.button("Generate SHAP Summary (may take a moment)"):
+            with st.spinner("Computing SHAP values..."):
+                # Sample for SHAP
+                X_sample = X_test_scaled[:100]
+                explainer = shap.TreeExplainer(st.session_state.model)
+                shap_values = explainer.shap_values(X_sample)
+                # Plot
+                fig, ax = plt.subplots(figsize=(10, 6))
+                shap.summary_plot(shap_values[1], X_sample, feature_names=st.session_state.feature_names, 
+                                  show=False, plot_type="bar")
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close()
     
     with tab4:
-        st.subheader("AWS S3 Storage Management")
-        if st.session_state.s3_client:
-            if st.button("🔄 Refresh Bucket List"):
-                objects = list_s3_objects()
-                if objects:
-                    st.write(f"Objects in bucket `{S3_BUCKET_NAME}`:")
-                    for obj in objects[:20]:  # show first 20
-                        st.text(obj)
-                else:
-                    st.info("Bucket is empty or inaccessible.")
-            
-            st.markdown("---")
-            st.subheader("Upload File to S3")
-            uploaded = st.file_uploader("Choose file", key="admin_s3_upload")
-            if uploaded:
-                s3_path = st.text_input("S3 Key (path)", f"admin_uploads/{uploaded.name}")
-                if st.button("Upload to S3"):
-                    if upload_file_to_s3(uploaded, s3_path):
-                        st.success(f"Uploaded to s3://{S3_BUCKET_NAME}/{s3_path}")
-        else:
-            st.warning("AWS S3 not configured. Set credentials in secrets or environment variables.")
-
-def reports_page():
-    """Generate historical reports and analytics."""
-    local_css()
-    st.markdown("<h1 class='main-header'>📊 Reports & Analytics</h1>", unsafe_allow_html=True)
+        st.json(metrics['classification_report'])
     
-    st.subheader("Historical Failure Trends")
-    # Generate synthetic historical data
-    dates = pd.date_range(end=datetime.now(), periods=90, freq='D')
-    failures = np.random.poisson(2, 90)
-    df_trend = pd.DataFrame({'Date': dates, 'Failures': failures})
-    fig = px.line(df_trend, x='Date', y='Failures', title="Daily Failure Count (Last 90 Days)")
-    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("---")
     
-    st.subheader("Maintenance Compliance")
-    compliance = np.random.uniform(85, 99, 12)
-    months = pd.date_range(end=datetime.now(), periods=12, freq='M').strftime('%b %Y')
-    fig2 = px.bar(x=months, y=compliance, title="Monthly Maintenance Compliance (%)",
-                 labels={'x':'Month', 'y':'Compliance %'})
-    fig2.add_hline(y=95, line_dash="dash", line_color="green", annotation_text="Target 95%")
-    st.plotly_chart(fig2, use_container_width=True)
+    # Data Exploration
+    st.subheader("📈 Data Exploration & Trends")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        fig_trends = plot_sensor_trends(df.sample(min(500, len(df))))
+        st.plotly_chart(fig_trends, use_container_width=True)
+    with col2:
+        # Correlation heatmap
+        corr_cols = st.session_state.feature_names + ['failure']
+        corr = df[corr_cols].corr()
+        fig_corr = px.imshow(
+            corr,
+            text_auto='.2f',
+            color_continuous_scale='RdBu_r',
+            zmin=-1, zmax=1,
+            aspect="auto"
+        )
+        fig_corr.update_layout(
+            title="Feature Correlations",
+            template="plotly_dark",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='white')
+        )
+        st.plotly_chart(fig_corr, use_container_width=True)
     
-    st.subheader("Download Reports")
+    st.markdown("---")
+    
+    # Model Management
+    st.subheader("⚙️ Model Management")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Generate Monthly Report (PDF simulation)"):
-            st.info("PDF report generation simulated. In production, would create detailed PDF.")
-            # Simulate download link
-            st.markdown(download_link(pd.DataFrame({'A':[1,2]}), "monthly_report.xlsx", "Download Sample Report"), unsafe_allow_html=True)
+        if st.button("🔄 Retrain Model on Current Data"):
+            with st.spinner("Retraining model with hyperparameter tuning..."):
+                model, scaler, features, new_metrics = train_and_save_model(df)
+                st.session_state.model = model
+                st.session_state.scaler = scaler
+                st.session_state.feature_names = features
+                st.session_state.model_metrics = new_metrics
+            st.success("Model retrained successfully!")
+            st.rerun()
+    
     with col2:
-        st.date_input("Select Date Range", value=(datetime.now()-timedelta(days=30), datetime.now()))
+        # Export model
+        if st.button("💾 Export Model (Joblib)"):
+            model_bytes = BytesIO()
+            joblib.dump(st.session_state.model, model_bytes)
+            model_bytes.seek(0)
+            st.download_button(
+                label="Download Model File",
+                data=model_bytes,
+                file_name="nexus_rf_model.joblib",
+                mime="application/octet-stream"
+            )
+    
+    # User Management Simulation
+    st.subheader("👥 System Users")
+    users_df = pd.DataFrame({
+        'Email': ['kareemeltemsah7@gmail.com', 'engineer1@slb.com', 'tech2@slb.com'],
+        'Role': ['Admin', 'Engineer', 'Technician'],
+        'Last Active': ['2024-01-15', '2024-01-14', '2024-01-13'],
+        'Predictions Made': [45, 23, 12]
+    })
+    st.dataframe(users_df, use_container_width=True)
 
-# =============================================================================
-# Main App Logic
-# =============================================================================
-def main():
-    """Main Streamlit app controller."""
-    # Initialize S3 client if credentials present
-    if AWS_ACCESS_KEY and AWS_SECRET_KEY:
-        initialize_s3_client()
+# ===================================================================
+# Main Application Interface
+# ===================================================================
+def main_app():
+    """Main application after login"""
+    st.sidebar.image("https://img.icons8.com/fluency/96/000000/maintenance.png", width=60)
+    st.sidebar.title("Nexus Predictive Maintenance")
+    st.sidebar.markdown(f"Welcome, **{st.session_state.user_email}**")
+    if st.session_state.is_admin:
+        st.sidebar.markdown("🔴 **Admin Mode**")
+    st.sidebar.markdown("---")
     
-    # Sidebar navigation (only when logged in)
-    if st.session_state.logged_in:
-        with st.sidebar:
-            st.image("https://via.placeholder.com/150x50/1f77b4/ffffff?text=NEXUS", use_column_width=True)
-            st.markdown(f"**User:** {st.session_state.user_email}")
-            st.markdown(f"**Role:** {'Admin' if st.session_state.is_admin else 'User'}")
-            st.markdown("---")
-            
-            # Navigation
-            page = st.radio("Navigation", 
-                           ["Dashboard", "Predictive Maintenance", "Reports"] + 
-                           (["Admin Panel"] if st.session_state.is_admin else []),
-                           index=0 if st.session_state.page not in ["Predictive Maintenance", "Reports", "Admin Panel"] else
-                           ["Dashboard", "Predictive Maintenance", "Reports", "Admin Panel"].index(st.session_state.page))
-            st.session_state.page = page
-            
-            st.markdown("---")
-            if st.button("🚪 Logout"):
-                st.session_state.logged_in = False
-                st.session_state.user_email = ""
-                st.session_state.is_admin = False
-                st.session_state.page = "Login"
+    # Navigation
+    if st.session_state.is_admin:
+        page = st.sidebar.radio(
+            "Navigation",
+            ["🏠 Dashboard", "📤 Upload & Predict", "📅 Maintenance Schedule", 
+             "📊 Analytics", "📈 Real-time Monitor", "⚙️ Settings"]
+        )
+    else:
+        page = st.sidebar.radio(
+            "Navigation",
+            ["🏠 Dashboard", "📤 Upload & Predict", "📅 Maintenance Schedule", "📈 Real-time Monitor"]
+        )
+    
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🚪 Logout"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+    
+    # Page routing
+    if page == "🏠 Dashboard":
+        dashboard_page()
+    elif page == "📤 Upload & Predict":
+        upload_predict_page()
+    elif page == "📅 Maintenance Schedule":
+        schedule_page()
+    elif page == "📊 Analytics" and st.session_state.is_admin:
+        admin_dashboard()
+    elif page == "📈 Real-time Monitor":
+        realtime_monitor_page()
+    elif page == "⚙️ Settings" and st.session_state.is_admin:
+        settings_page()
+
+def dashboard_page():
+    """User dashboard overview"""
+    st.title("🏠 Maintenance Dashboard")
+    
+    if st.session_state.data is None:
+        st.info("👋 Welcome! Start by uploading data or use the demo dataset.")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📥 Load Demo Dataset", use_container_width=True):
+                with st.spinner("Loading synthetic data..."):
+                    df = generate_synthetic_machine_data(2000)
+                    st.session_state.data = df
+                    model, scaler, features, metrics = train_and_save_model(df)
+                    st.session_state.model = model
+                    st.session_state.scaler = scaler
+                    st.session_state.feature_names = features
+                    st.session_state.model_metrics = metrics
+                st.success("Demo data loaded!")
                 st.rerun()
+        with col2:
+            st.markdown("Or go to **Upload & Predict** to use your own Excel file.")
+        return
     
-    # Render appropriate page
+    df = st.session_state.data
+    
+    # Summary cards
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Machines", df['machine_id'].nunique())
+    with col2:
+        high_risk = 0
+        if st.session_state.predictions is not None:
+            high_risk = (st.session_state.predictions['risk_level'] == 'High').sum()
+        st.metric("High Risk Alerts", high_risk, delta=None)
+    with col3:
+        next_maintenance = "N/A"
+        if st.session_state.maintenance_schedule is not None:
+            next_date = st.session_state.maintenance_schedule['recommended_maintenance_date'].min()
+            next_maintenance = next_date
+        st.metric("Next Maintenance", next_maintenance)
+    
+    # Recent predictions
+    st.subheader("Recent Predictions")
+    if st.session_state.predictions is not None:
+        preds = st.session_state.predictions.head(10)
+        st.dataframe(preds[['machine_id', 'failure_probability', 'risk_level', 'predicted_failure']], 
+                     use_container_width=True)
+    else:
+        st.info("No predictions yet. Upload data to see predictions.")
+    
+    # Quick stats chart
+    if st.session_state.predictions is not None:
+        fig_risk = plot_risk_distribution(st.session_state.predictions)
+        st.plotly_chart(fig_risk, use_container_width=True)
+
+def upload_predict_page():
+    """Upload Excel and run predictions"""
+    st.title("📤 Upload & Predict")
+    
+    # Template download
+    st.markdown("### 📋 Download Template")
+    template_bytes = create_excel_template()
+    st.download_button(
+        label="⬇️ Download Excel Template",
+        data=template_bytes,
+        file_name="nexus_data_template.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    
+    st.markdown("---")
+    
+    # File upload
+    uploaded_file = st.file_uploader(
+        "Upload Excel file with machine data",
+        type=['xlsx', 'xls'],
+        help="Upload an Excel file matching the template format."
+    )
+    
+    if uploaded_file is not None:
+        st.session_state.uploaded_file = uploaded_file
+        try:
+            df_input = pd.read_excel(uploaded_file, sheet_name=0)
+            st.success(f"✅ File loaded: {len(df_input)} rows, {len(df_input.columns)} columns")
+            
+            with st.expander("Preview Uploaded Data", expanded=True):
+                st.dataframe(df_input.head(10), use_container_width=True)
+            
+            # Check if model exists
+            if st.session_state.model is None:
+                st.warning("No model available. Loading default model...")
+                with st.spinner("Training model on synthetic data..."):
+                    synth_df = generate_synthetic_machine_data(5000)
+                    model, scaler, features, metrics = train_and_save_model(synth_df)
+                    st.session_state.model = model
+                    st.session_state.scaler = scaler
+                    st.session_state.feature_names = features
+                    st.session_state.model_metrics = metrics
+            
+            # Predict button
+            if st.button("🔮 Predict Failures & Generate Schedule", type="primary"):
+                with st.spinner("Processing..."):
+                    try:
+                        # Make predictions
+                        preds = predict_failure(
+                            st.session_state.model,
+                            st.session_state.scaler,
+                            st.session_state.feature_names,
+                            df_input
+                        )
+                        st.session_state.predictions = preds
+                        
+                        # Generate schedule
+                        schedule = generate_maintenance_schedule(preds)
+                        st.session_state.maintenance_schedule = schedule
+                        
+                        st.success("Predictions completed!")
+                        
+                        # Show results
+                        st.subheader("Prediction Results")
+                        st.dataframe(preds[['machine_id', 'failure_probability', 'risk_level', 'predicted_failure']], 
+                                     use_container_width=True)
+                        
+                        # Export options
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            excel_preds = to_excel_download(preds, 'Predictions')
+                            st.download_button(
+                                label="📥 Download Predictions (Excel)",
+                                data=excel_preds,
+                                file_name="nexus_predictions.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                        with col2:
+                            excel_schedule = to_excel_download(schedule, 'Maintenance_Schedule')
+                            st.download_button(
+                                label="📅 Download Maintenance Schedule",
+                                data=excel_schedule,
+                                file_name="nexus_maintenance_schedule.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                        
+                        # Risk distribution
+                        fig_risk = plot_risk_distribution(preds)
+                        st.plotly_chart(fig_risk, use_container_width=True)
+                        
+                    except Exception as e:
+                        st.error(f"Prediction error: {str(e)}")
+                        st.info("Please ensure your Excel file contains all required columns. Download the template for reference.")
+        except Exception as e:
+            st.error(f"Error reading Excel file: {e}")
+
+def schedule_page():
+    """View and manage maintenance schedule"""
+    st.title("📅 Maintenance Schedule")
+    
+    if st.session_state.maintenance_schedule is None:
+        st.info("No maintenance schedule generated yet. Please upload data and run predictions first.")
+        return
+    
+    schedule = st.session_state.maintenance_schedule
+    
+    # Filters
+    col1, col2 = st.columns(2)
+    with col1:
+        risk_filter = st.multiselect(
+            "Filter by Priority",
+            options=['Low', 'Medium', 'High'],
+            default=['High', 'Medium']
+        )
+    with col2:
+        sort_by = st.selectbox(
+            "Sort by",
+            ['recommended_maintenance_date', 'failure_probability', 'priority']
+        )
+    
+    filtered = schedule[schedule['priority'].isin(risk_filter)]
+    filtered = filtered.sort_values(sort_by, ascending=(sort_by != 'failure_probability'))
+    
+    st.dataframe(
+        filtered[['machine_id', 'failure_probability', 'priority', 
+                  'days_until_maintenance', 'recommended_maintenance_date']],
+        use_container_width=True
+    )
+    
+    # Calendar view (simplified)
+    st.subheader("Upcoming Maintenance (Next 30 Days)")
+    upcoming = schedule[pd.to_datetime(schedule['recommended_maintenance_date']) <= datetime.now() + timedelta(days=30)]
+    if len(upcoming) > 0:
+        fig = px.timeline(
+            upcoming,
+            x_start="recommended_maintenance_date",
+            x_end=pd.to_datetime(upcoming['recommended_maintenance_date']) + timedelta(days=1),
+            y="machine_id",
+            color="priority",
+            color_discrete_map={'High': '#EF553B', 'Medium': '#FFA15A', 'Low': '#00CC96'},
+            title="Maintenance Timeline"
+        )
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='white')
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No maintenance scheduled in the next 30 days.")
+
+def realtime_monitor_page():
+    """Simulate real-time monitoring with live charts"""
+    st.title("📈 Real-time Machine Monitoring")
+    st.markdown("Simulated live sensor data (refreshes every 2 seconds)")
+    
+    # Auto-refresh control
+    auto_refresh = st.checkbox("Auto-refresh", value=True)
+    if auto_refresh:
+        time.sleep(2)
+        st.rerun()
+    
+    # Generate random machine data
+    n_machines = 5
+    machine_ids = [f'M{str(i).zfill(3)}' for i in range(1, n_machines+1)]
+    
+    cols = st.columns(n_machines)
+    for i, mid in enumerate(machine_ids):
+        with cols[i]:
+            st.markdown(f"**{mid}**")
+            vib = np.random.uniform(0.8, 3.5)
+            temp = np.random.uniform(30, 55)
+            press = np.random.uniform(95, 115)
+            
+            # Color based on threshold
+            vib_color = "normal" if vib < 2.5 else "inverse"
+            temp_color = "normal" if temp < 45 else "inverse"
+            press_color = "normal" if press < 110 else "inverse"
+            
+            st.metric("Vibration", f"{vib:.2f} mm/s", delta=None)
+            st.metric("Temperature", f"{temp:.1f} °C")
+            st.metric("Pressure", f"{press:.1f} psi")
+            st.markdown("---")
+    
+    # Real-time chart
+    chart_data = pd.DataFrame({
+        'timestamp': pd.date_range(end=datetime.now(), periods=50, freq='S'),
+        'vibration': np.random.normal(2, 0.5, 50).cumsum() / 10 + 1.5,
+        'temperature': np.random.normal(40, 2, 50).cumsum() / 20 + 35
+    })
+    
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(
+        go.Scatter(x=chart_data['timestamp'], y=chart_data['vibration'], name="Vibration",
+                   line=dict(color='#FF4B4B')),
+        secondary_y=False
+    )
+    fig.add_trace(
+        go.Scatter(x=chart_data['timestamp'], y=chart_data['temperature'], name="Temperature",
+                   line=dict(color='#FFA15A')),
+        secondary_y=True
+    )
+    fig.update_layout(
+        title="Live Sensor Trends (Last 50 seconds)",
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'),
+        hovermode='x unified'
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+def settings_page():
+    """Admin settings page"""
+    st.title("⚙️ System Settings")
+    
+    st.subheader("Model Configuration")
+    with st.form("model_settings"):
+        n_estimators = st.slider("Number of Trees", 50, 500, 100, step=10)
+        max_depth = st.slider("Max Depth", 5, 50, 20)
+        min_samples_split = st.slider("Min Samples Split", 2, 20, 2)
+        
+        submitted = st.form_submit_button("Update Model Parameters")
+        if submitted:
+            st.success("Settings saved (simulation)")
+    
+    st.subheader("Alert Thresholds")
+    high_risk_threshold = st.slider("High Risk Probability Threshold", 0.5, 0.95, 0.7, 0.05)
+    medium_risk_threshold = st.slider("Medium Risk Probability Threshold", 0.2, 0.6, 0.4, 0.05)
+    
+    st.subheader("Data Management")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Clear All Data"):
+            for key in ['data', 'predictions', 'maintenance_schedule', 'model', 'scaler', 'model_metrics']:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.success("Data cleared!")
+            st.rerun()
+    with col2:
+        if st.button("📊 Generate System Report"):
+            report = {
+                'model_metrics': st.session_state.model_metrics,
+                'data_shape': st.session_state.data.shape if st.session_state.data is not None else None,
+                'predictions_count': len(st.session_state.predictions) if st.session_state.predictions is not None else 0,
+                'timestamp': datetime.now().isoformat()
+            }
+            st.json(report)
+
+# ===================================================================
+# Main Entry Point
+# ===================================================================
+def main():
+    """Main application entry point"""
     if not st.session_state.logged_in:
         login_page()
     else:
-        if st.session_state.page == "Dashboard":
-            dashboard_page()
-        elif st.session_state.page == "Predictive Maintenance":
-            predictive_maintenance_page()
-        elif st.session_state.page == "Reports":
-            reports_page()
-        elif st.session_state.page == "Admin Panel" and st.session_state.is_admin:
-            admin_panel_page()
-        else:
-            dashboard_page()
+        main_app()
 
 if __name__ == "__main__":
     main()
+

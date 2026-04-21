@@ -418,7 +418,7 @@ import hashlib
 
 _USERS = {
     "kareemeltemsah7@gmail.com": {
-        "password_hash": hashlib.sha256("temsah7@gmail.com".encode()).hexdigest(),
+        "password_hash": hashlib.sha256("temsah1".encode()).hexdigest(),
         "name": "Kareem",
         "role": "Admin",
         "avatar": "👤",
@@ -904,12 +904,22 @@ def render_fleet_overview(readings_df: pd.DataFrame):
             text=[f"{v:.0f}%" for v in df_s["health_score"]],
             textposition="outside", textfont=dict(size=9, color="#6B8CAE"),
         ))
-        fig.add_hline(y=80, line_dash="dash", line_color="#00FF9D", line_width=1,
-                      annotation_text="Healthy ▶", annotation_font_size=9, annotation_font_color="#00FF9D")
-        fig.add_hline(y=50, line_dash="dash", line_color="#FF7043", line_width=1,
-                      annotation_text="Warning ▶", annotation_font_size=9, annotation_font_color="#FF7043")
-        fig.update_layout(**plotly_layout, title="Fleet Health Scores", height=300, margin=_MARGIN)
-        # ✅ FIX: axes applied separately — no dict key conflict
+        # Use shapes instead of add_hline to avoid version compatibility issues
+        fig.update_layout(
+            **plotly_layout, title="Fleet Health Scores", height=300, margin=_MARGIN,
+            shapes=[
+                dict(type="line", x0=0, x1=1, xref="paper", y0=80, y1=80,
+                     line=dict(color="#00FF9D", width=1, dash="dash")),
+                dict(type="line", x0=0, x1=1, xref="paper", y0=50, y1=50,
+                     line=dict(color="#FF7043", width=1, dash="dash")),
+            ],
+            annotations=[
+                dict(x=1, xref="paper", y=80, text="Healthy ▶", showarrow=False,
+                     font=dict(color="#00FF9D", size=9), xanchor="right", yanchor="bottom"),
+                dict(x=1, xref="paper", y=50, text="Warning ▶", showarrow=False,
+                     font=dict(color="#FF7043", size=9), xanchor="right", yanchor="bottom"),
+            ],
+        )
         fig.update_xaxes(**_AX)
         fig.update_yaxes(**_AX, range=[0, 118])
         st.plotly_chart(fig, use_container_width=True)
@@ -993,11 +1003,21 @@ def render_fleet_overview(readings_df: pd.DataFrame):
                 marker_color="#00D4FF", opacity=0.8,
                 marker_line=dict(color="#1A3A5C", width=1),
             ))
-            fig5.add_vline(x=168,  line_dash="dash", line_color="#FFB800", line_width=1.5,
-                           annotation_text="1 Week",  annotation_font_color="#FFB800", annotation_font_size=9)
-            fig5.add_vline(x=720,  line_dash="dash", line_color="#00FF9D", line_width=1.5,
-                           annotation_text="30 Days", annotation_font_color="#00FF9D", annotation_font_size=9)
-            fig5.update_layout(**plotly_layout, title="RUL Distribution (Hours)", height=320, margin=_MARGIN)
+            fig5.update_layout(
+                **plotly_layout, title="RUL Distribution (Hours)", height=320, margin=_MARGIN,
+                shapes=[
+                    dict(type="line", x0=168, x1=168, y0=0, y1=1, yref="paper",
+                         line=dict(color="#FFB800", width=1.5, dash="dash")),
+                    dict(type="line", x0=720, x1=720, y0=0, y1=1, yref="paper",
+                         line=dict(color="#00FF9D", width=1.5, dash="dash")),
+                ],
+                annotations=[
+                    dict(x=168, y=1, yref="paper", text="1 Week", showarrow=False,
+                         font=dict(color="#FFB800", size=9), xanchor="left", yanchor="top"),
+                    dict(x=720, y=1, yref="paper", text="30 Days", showarrow=False,
+                         font=dict(color="#00FF9D", size=9), xanchor="left", yanchor="top"),
+                ],
+            )
             fig5.update_xaxes(**_AX, title_text="Remaining Useful Life (h)")
             fig5.update_yaxes(**_AX, title_text="Count")
             st.plotly_chart(fig5, use_container_width=True)
@@ -1452,36 +1472,58 @@ def render_operations_dashboard(readings_df: pd.DataFrame, kpis: dict):
             </div>
         </div>""", unsafe_allow_html=True)
 
-    # Maintenance timeline
+    # Maintenance timeline — use numeric x-axis (hours from now) to avoid datetime issues
     st.markdown("#### 📅 Maintenance Schedule Forecast")
     if "RUL (h)" in df_ops.columns and "Machine" in df_ops.columns:
         fig_tl = go.Figure()
-        today  = datetime.now()
-        palette_t = ["#FF1744","#FFB800","#00FF9D"]
         for _, r in df_ops.iterrows():
-            rul_h = r.get("RUL (h)", 0)
-            clr   = "#FF1744" if rul_h<48 else "#FFB800" if rul_h<168 else "#00D4FF"
-            fig_tl.add_trace(go.Scatter(
-                x=[today + timedelta(hours=float(rul_h))],
-                y=[r["Machine"]],
-                mode="markers+text",
-                text=[f"  {format_rul(rul_h)}"],
-                textfont=dict(size=9,color=clr),
-                marker=dict(size=14,color=clr,symbol="diamond",
-                            line=dict(width=1,color="#1A3A5C")),
-                name=r["Machine"],
-                hovertemplate=f"<b>{r['Machine']}</b><br>Due in {format_rul(rul_h)}<extra></extra>",
+            rul_h = float(r.get("RUL (h)", 0))
+            clr   = "#FF1744" if rul_h < 48 else "#FFB800" if rul_h < 168 else "#00D4FF"
+            machine = str(r["Machine"])
+            fig_tl.add_trace(go.Bar(
+                x=[rul_h],
+                y=[machine],
+                orientation="h",
+                marker_color=clr,
+                marker_line_width=0,
+                opacity=0.85,
+                text=[f" {format_rul(rul_h)}"],
+                textposition="outside",
+                textfont=dict(size=9, color=clr),
+                hovertemplate=f"<b>{machine}</b><br>Maintenance due in {format_rul(rul_h)}<extra></extra>",
                 showlegend=False,
             ))
-        fig_tl.add_vline(x=today,                     line_dash="solid", line_color="#00D4FF", line_width=2,
-                         annotation_text="NOW",       annotation_font_color="#00D4FF",annotation_font_size=10)
-        fig_tl.add_vline(x=today+timedelta(days=7),   line_dash="dash",  line_color="#FFB800", line_width=1,
-                         annotation_text="7d",        annotation_font_color="#FFB800",annotation_font_size=9)
-        fig_tl.add_vline(x=today+timedelta(days=30),  line_dash="dash",  line_color="#00FF9D", line_width=1,
-                         annotation_text="30d",       annotation_font_color="#00FF9D",annotation_font_size=9)
-        fig_tl.update_layout(**plotly_layout, height=380, title="Fleet Maintenance Timeline", showlegend=False, margin=_MARGIN)
-        fig_tl.update_xaxes(**_AX, title_text="Date")
-        fig_tl.update_yaxes(**_AX)
+
+        # Add reference lines using shapes (no datetime needed)
+        fig_tl.update_layout(
+            **plotly_layout,
+            height=max(300, len(df_ops) * 38 + 80),
+            title="Fleet Maintenance Timeline (Hours Until Due)",
+            showlegend=False,
+            margin=_MARGIN,
+            barmode="overlay",
+            shapes=[
+                # 48h critical line
+                dict(type="line", x0=48, x1=48, y0=-0.5, y1=len(df_ops)-0.5,
+                     line=dict(color="#FF1744", width=1.5, dash="dash")),
+                # 1 week line
+                dict(type="line", x0=168, x1=168, y0=-0.5, y1=len(df_ops)-0.5,
+                     line=dict(color="#FFB800", width=1.5, dash="dash")),
+                # 30 day line
+                dict(type="line", x0=720, x1=720, y0=-0.5, y1=len(df_ops)-0.5,
+                     line=dict(color="#00FF9D", width=1, dash="dash")),
+            ],
+            annotations=[
+                dict(x=48,  y=len(df_ops)-0.5, text="48h Critical", showarrow=False,
+                     font=dict(color="#FF1744", size=9), xanchor="left", yanchor="bottom"),
+                dict(x=168, y=len(df_ops)-0.5, text="1 Week",       showarrow=False,
+                     font=dict(color="#FFB800", size=9), xanchor="left", yanchor="bottom"),
+                dict(x=720, y=len(df_ops)-0.5, text="30 Days",      showarrow=False,
+                     font=dict(color="#00FF9D", size=9), xanchor="left", yanchor="bottom"),
+            ],
+        )
+        fig_tl.update_xaxes(**_AX, title_text="Hours Until Maintenance Required")
+        fig_tl.update_yaxes(**_AX, autorange="reversed")
         st.plotly_chart(fig_tl, use_container_width=True)
 
 

@@ -1163,11 +1163,26 @@ def render_operations_dashboard(readings_df: pd.DataFrame, kpis: dict):
         fmt_cols = {c: "{:.1f}" for c in ["Health %","Fail Prob %"] if c in df_ops.columns}
         if "RUL (h)" in df_ops.columns:     fmt_cols["RUL (h)"]     = "{:.0f}"
         if "Runtime (h)" in df_ops.columns: fmt_cols["Runtime (h)"] = "{:.0f}"
-        grad_col = "Fail Prob %" if "Fail Prob %" in df_ops.columns else None
-        styled = df_ops.style
-        if grad_col:
-            styled = styled.background_gradient(subset=[grad_col], cmap="RdYlGn_r")
-        st.dataframe(styled.format(fmt_cols), use_container_width=True, height=380)
+        def _color_fp(val):
+            try:
+                v = float(val)
+                if v > 70:   return "background-color:#3D0A0A;color:#FF6B6B;font-weight:700;"
+                elif v > 40: return "background-color:#3D2A00;color:#FFB800;font-weight:700;"
+                else:        return "background-color:#003D1A;color:#00FF9D;font-weight:700;"
+            except: return ""
+        def _color_hp(val):
+            try:
+                v = float(val)
+                if v < 40:   return "background-color:#3D0A0A;color:#FF6B6B;"
+                elif v < 70: return "background-color:#3D2A00;color:#FFB800;"
+                else:        return "background-color:#003D1A;color:#00FF9D;"
+            except: return ""
+        styled = df_ops.style.format(fmt_cols)
+        if "Fail Prob %" in df_ops.columns:
+            styled = styled.applymap(_color_fp, subset=["Fail Prob %"])
+        if "Health %" in df_ops.columns:
+            styled = styled.applymap(_color_hp, subset=["Health %"])
+        st.dataframe(styled, use_container_width=True, height=380)
 
     with c2:
         st.markdown("#### 💰 Cost-Benefit Analysis")
@@ -1320,8 +1335,17 @@ def main():
         ddf   = readings_df[dcols].copy()
         ddf.columns = [c.replace("_"," ").title().replace("Ml ","AI ") for c in dcols]
         hc = "Health Score"
-        styled = ddf.style.background_gradient(subset=[hc],cmap="RdYlGn").format(precision=2) \
-                 if hc in ddf.columns else ddf.style.format(precision=2)
+        def _color_health_score(val):
+            try:
+                v = float(val)
+                if v < 40:   return "background-color:#3D0A0A;color:#FF6B6B;"
+                elif v < 70: return "background-color:#3D2A00;color:#FFB800;"
+                else:        return "background-color:#003D1A;color:#00FF9D;"
+            except: return ""
+        if hc in ddf.columns:
+            styled = ddf.style.format(precision=2).applymap(_color_health_score, subset=[hc])
+        else:
+            styled = ddf.style.format(precision=2)
         st.dataframe(styled, use_container_width=True, height=320)
 
     with tabs[3]:

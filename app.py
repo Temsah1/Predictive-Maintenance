@@ -410,6 +410,226 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+
+# ─── Authentication ────────────────────────────────────────────────────────────
+
+# Credentials (hashed for security — never store plain passwords in production)
+import hashlib
+
+_USERS = {
+    "kareemeltemsah7@gmail.com": {
+        "password_hash": hashlib.sha256("temsah7@gmail.com".encode()).hexdigest(),
+        "name": "Kareem",
+        "role": "Admin",
+        "avatar": "👤",
+    }
+}
+
+def _hash(pw: str) -> str:
+    return hashlib.sha256(pw.encode()).hexdigest()
+
+def render_login_page():
+    """Full-page login UI — shown when user is not authenticated."""
+    st.markdown("""
+    <style>
+    /* Hide all streamlit chrome on login page */
+    [data-testid="stSidebar"]  { display:none !important; }
+    [data-testid="collapsedControl"] { display:none !important; }
+    #MainMenu, footer, header  { visibility:hidden; }
+    .block-container { padding-top:0 !important; max-width:100% !important; }
+
+    .login-wrapper {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(ellipse at 30% 40%, rgba(0,212,255,0.06) 0%, transparent 60%),
+                    radial-gradient(ellipse at 70% 70%, rgba(0,255,157,0.04) 0%, transparent 60%),
+                    linear-gradient(135deg, #050B18 0%, #071020 50%, #050B18 100%);
+        padding: 20px;
+    }
+    .login-card {
+        background: linear-gradient(145deg, #0A1628 0%, #0D1B35 100%);
+        border: 1px solid #1A3A5C;
+        border-radius: 20px;
+        padding: 48px 44px;
+        width: 100%;
+        max-width: 440px;
+        box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 60px rgba(0,212,255,0.05);
+        position: relative;
+        overflow: hidden;
+    }
+    .login-card::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, transparent, #00D4FF, #00FF9D, transparent);
+    }
+    .login-logo {
+        text-align: center;
+        font-size: 3.5rem;
+        margin-bottom: 12px;
+        filter: drop-shadow(0 0 20px rgba(0,212,255,0.4));
+    }
+    .login-brand {
+        text-align: center;
+        font-family: "Rajdhani", sans-serif;
+        font-size: 1.7rem;
+        font-weight: 700;
+        color: #00D4FF;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        text-shadow: 0 0 20px rgba(0,212,255,0.4);
+        margin-bottom: 4px;
+    }
+    .login-sub {
+        text-align: center;
+        font-size: 0.72rem;
+        color: #4A6A8A;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-bottom: 36px;
+    }
+    .login-label {
+        font-size: 0.72rem;
+        color: #6B8CAE;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+        font-family: "Rajdhani", sans-serif;
+        font-weight: 600;
+    }
+    .login-divider {
+        border: none;
+        border-top: 1px solid #1A3A5C;
+        margin: 28px 0;
+    }
+    .login-footer {
+        text-align: center;
+        font-size: 0.65rem;
+        color: #2A4A6A;
+        letter-spacing: 1.5px;
+        margin-top: 24px;
+        text-transform: uppercase;
+    }
+    .login-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(0,255,157,0.08);
+        border: 1px solid rgba(0,255,157,0.2);
+        color: #00FF9D;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 2px;
+        margin: 0 auto 32px;
+        display: block;
+        text-align: center;
+        width: fit-content;
+    }
+    .err-box {
+        background: rgba(255,23,68,0.1);
+        border: 1px solid rgba(255,23,68,0.35);
+        border-radius: 8px;
+        padding: 10px 14px;
+        color: #FF6B6B;
+        font-size: 0.8rem;
+        margin-top: 8px;
+        text-align: center;
+    }
+    /* Override streamlit input styles on login page */
+    .stTextInput > div > div > input {
+        background: #060E1F !important;
+        border: 1px solid #1A3A5C !important;
+        border-radius: 8px !important;
+        color: #E8F4FD !important;
+        font-family: "Space Grotesk", sans-serif !important;
+        font-size: 0.9rem !important;
+        padding: 12px 14px !important;
+        transition: border-color 0.2s !important;
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #00D4FF !important;
+        box-shadow: 0 0 0 2px rgba(0,212,255,0.12) !important;
+    }
+    .stButton > button {
+        background: linear-gradient(135deg, #00D4FF 0%, #00A8CC 100%) !important;
+        color: #050B18 !important;
+        border: none !important;
+        border-radius: 10px !important;
+        font-family: "Rajdhani", sans-serif !important;
+        font-size: 1rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 2px !important;
+        padding: 12px !important;
+        width: 100% !important;
+        margin-top: 8px !important;
+        transition: all 0.2s !important;
+        box-shadow: 0 4px 20px rgba(0,212,255,0.25) !important;
+    }
+    .stButton > button:hover {
+        box-shadow: 0 6px 30px rgba(0,212,255,0.45) !important;
+        transform: translateY(-2px) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('''
+    <div class="login-wrapper">
+        <div class="login-card">
+            <div class="login-logo">🧠</div>
+            <div class="login-brand">IntelliOps AI</div>
+            <div class="login-sub">Industrial Intelligence Platform</div>
+            <div class="login-badge">🔒 ADMIN ACCESS ONLY</div>
+        </div>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    # Center the form using columns
+    _, center, _ = st.columns([1, 2, 1])
+    with center:
+        st.markdown('<div class="login-label">Email Address</div>', unsafe_allow_html=True)
+        email = st.text_input("Email", placeholder="admin@company.com",
+                              label_visibility="collapsed", key="login_email")
+
+        st.markdown('<div class="login-label" style="margin-top:16px;">Password</div>', unsafe_allow_html=True)
+        password = st.text_input("Password", type="password", placeholder="••••••••••••",
+                                 label_visibility="collapsed", key="login_pass")
+
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        login_btn = st.button("🔓  SIGN IN", use_container_width=True, key="login_btn")
+
+        if login_btn:
+            email_clean = email.strip().lower()
+            if email_clean in _USERS and _hash(password) == _USERS[email_clean]["password_hash"]:
+                st.session_state["authenticated"] = True
+                st.session_state["current_user"]  = _USERS[email_clean]
+                st.rerun()
+            else:
+                st.markdown('<div class="err-box">⛔ Invalid email or password. Access denied.</div>',
+                            unsafe_allow_html=True)
+
+        st.markdown("""
+        <hr class="login-divider">
+        <div class="login-footer">
+            🔒 Secured Access &nbsp;·&nbsp; IntelliOps AI v2.0<br>
+            Unauthorized access is strictly prohibited
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def check_auth():
+    """Returns True if authenticated, renders login page and returns False otherwise."""
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+    if not st.session_state["authenticated"]:
+        render_login_page()
+        st.stop()
+    return True
+
 # ─── Imports ───────────────────────────────────────────────────────────────────
 
 from data_generator import SensorDataGenerator, generate_alerts
@@ -526,6 +746,29 @@ def render_top_navbar(kpis: dict, n_alerts: int):
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    # User info + logout rendered via Streamlit columns (HTML buttons can't trigger Python)
+    user  = st.session_state.get("current_user", {})
+    uname = user.get("name", "Admin")
+    urole = user.get("role", "ADMIN")
+    uavatar = user.get("avatar", "👤")
+    _, uc1, uc2 = st.columns([8, 1.6, 0.7])
+    with uc1:
+        st.markdown(f"""
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 12px;
+                    background:rgba(0,212,255,0.07);border:1px solid rgba(0,212,255,0.2);
+                    border-radius:8px;font-size:0.72rem;color:#00D4FF;">
+            <span style="font-size:1.1rem;">{uavatar}</span>
+            <div>
+                <div style="font-weight:700;letter-spacing:1px;">{uname}</div>
+                <div style="font-size:0.58rem;color:#4A6A8A;letter-spacing:1.5px;">{urole}</div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+    with uc2:
+        if st.button("⏏ Exit", key="logout_btn", help="Sign out of IntelliOps AI"):
+            st.session_state["authenticated"] = False
+            st.session_state["current_user"]  = {}
+            st.rerun()
 
 
 # ─── CONTROL BAR ──────────────────────────────────────────────────────────────
@@ -1179,9 +1422,9 @@ def render_operations_dashboard(readings_df: pd.DataFrame, kpis: dict):
             except: return ""
         styled = df_ops.style.format(fmt_cols)
         if "Fail Prob %" in df_ops.columns:
-            styled = styled.applymap(_color_fp, subset=["Fail Prob %"])
+            styled = styled.map(_color_fp, subset=["Fail Prob %"])
         if "Health %" in df_ops.columns:
-            styled = styled.applymap(_color_hp, subset=["Health %"])
+            styled = styled.map(_color_hp, subset=["Health %"])
         st.dataframe(styled, use_container_width=True, height=380)
 
     with c2:
@@ -1245,6 +1488,8 @@ def render_operations_dashboard(readings_df: pd.DataFrame, kpis: dict):
 # ─── MAIN ──────────────────────────────────────────────────────────────────────
 
 def main():
+    # ── Authentication gate — must pass before anything else renders
+    check_auth()
     init_session_state()
     gen: SensorDataGenerator = st.session_state.generator
 
@@ -1343,7 +1588,7 @@ def main():
                 else:        return "background-color:#003D1A;color:#00FF9D;"
             except: return ""
         if hc in ddf.columns:
-            styled = ddf.style.format(precision=2).applymap(_color_health_score, subset=[hc])
+            styled = ddf.style.format(precision=2).map(_color_health_score, subset=[hc])
         else:
             styled = ddf.style.format(precision=2)
         st.dataframe(styled, use_container_width=True, height=320)

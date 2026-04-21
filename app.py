@@ -429,15 +429,19 @@ GRID_COLOR = "#1A3A5C"
 TEXT_COLOR = "#6B8CAE"
 PLOT_FONT  = "Space Grotesk"
 
-# Base layout — NEVER include xaxis/yaxis keys here to avoid dict-merge TypeError
+# Base layout — NO xaxis/yaxis/margin keys to avoid TypeError on duplicate kwargs
 plotly_layout = dict(
     paper_bgcolor=PLOT_BG,
     plot_bgcolor=PLOT_BG,
     font=dict(family=PLOT_FONT, color="#E8F4FD", size=11),
     legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=GRID_COLOR, font=dict(size=10)),
-    margin=dict(l=40, r=20, t=40, b=30),
     hovermode="x unified",
 )
+
+# Default margin — pass explicitly per chart when needed, never via plotly_layout
+_MARGIN      = dict(l=40, r=20, t=40, b=30)
+_MARGIN_SLIM = dict(l=10, r=10, t=40, b=10)
+_MARGIN_GAUGE= dict(l=20, r=20, t=50, b=10)
 
 _AX = dict(gridcolor=GRID_COLOR, zerolinecolor=GRID_COLOR, tickfont=dict(color=TEXT_COLOR))
 
@@ -661,7 +665,7 @@ def render_fleet_overview(readings_df: pd.DataFrame):
                       annotation_text="Healthy ▶", annotation_font_size=9, annotation_font_color="#00FF9D")
         fig.add_hline(y=50, line_dash="dash", line_color="#FF7043", line_width=1,
                       annotation_text="Warning ▶", annotation_font_size=9, annotation_font_color="#FF7043")
-        fig.update_layout(**plotly_layout, title="Fleet Health Scores", height=300)
+        fig.update_layout(**plotly_layout, title="Fleet Health Scores", height=300, margin=_MARGIN)
         # ✅ FIX: axes applied separately — no dict key conflict
         fig.update_xaxes(**_AX)
         fig.update_yaxes(**_AX, range=[0, 118])
@@ -733,7 +737,7 @@ def render_fleet_overview(readings_df: pd.DataFrame):
                             line=dict(width=1, color="#1A3A5C")),
                 hovertemplate="<b>%{text}</b><br>Health: %{x:.1f}%<br>Fail: %{y:.1f}%<extra></extra>",
             ))
-        fig4.update_layout(**plotly_layout, title="Health vs Failure Probability", height=320)
+        fig4.update_layout(**plotly_layout, title="Health vs Failure Probability", height=320, margin=_MARGIN)
         fig4.update_xaxes(**_AX, title_text="Health Score (%)")
         fig4.update_yaxes(**_AX, title_text="Failure Probability (%)")
         st.plotly_chart(fig4, use_container_width=True)
@@ -750,7 +754,7 @@ def render_fleet_overview(readings_df: pd.DataFrame):
                            annotation_text="1 Week",  annotation_font_color="#FFB800", annotation_font_size=9)
             fig5.add_vline(x=720,  line_dash="dash", line_color="#00FF9D", line_width=1.5,
                            annotation_text="30 Days", annotation_font_color="#00FF9D", annotation_font_size=9)
-            fig5.update_layout(**plotly_layout, title="RUL Distribution (Hours)", height=320)
+            fig5.update_layout(**plotly_layout, title="RUL Distribution (Hours)", height=320, margin=_MARGIN)
             fig5.update_xaxes(**_AX, title_text="Remaining Useful Life (h)")
             fig5.update_yaxes(**_AX, title_text="Count")
             st.plotly_chart(fig5, use_container_width=True)
@@ -835,7 +839,7 @@ def render_sensor_charts(readings_df: pd.DataFrame, selected_machine: str):
                                 tickfont=dict(size=8, color=TEXT_COLOR)),
                 angularaxis=dict(gridcolor=GRID_COLOR, tickfont=dict(size=10, color="#E8F4FD")),
             ),
-            title=f"Sensor Profile — {selected_machine}", height=320,
+            title=f"Sensor Profile — {selected_machine}", height=320, margin=_MARGIN,
         )
         st.plotly_chart(fig, use_container_width=True)
 
@@ -958,7 +962,7 @@ def render_ai_insights(readings_df: pd.DataFrame, pipeline: IndustrialMLPipeline
             clrs  = ["#00D4FF","#00FF9D","#00FF9D","#FFB800","#FFB800","#FFB800"] + ["#4A6A8A"]*6
             fig = go.Figure(go.Bar(x=vals, y=names, orientation="h",
                                    marker_color=clrs[:len(vals)], marker_line_width=0))
-            fig.update_layout(**plotly_layout, height=380, title="Failure Predictor Features")
+            fig.update_layout(**plotly_layout, height=380, title="Failure Predictor Features", margin=_MARGIN)
             fig.update_xaxes(**_AX)
             fig.update_yaxes(**_AX, autorange="reversed")
             st.plotly_chart(fig, use_container_width=True)
@@ -1021,7 +1025,7 @@ def render_historical_analytics(hist_df: pd.DataFrame, selected_machine: str):
             hovertemplate=f"%{{y:.2f}}<extra>{sensor}</extra>",
         ), row=r, col=c)
 
-    fig.update_layout(**plotly_layout, height=680,
+    fig.update_layout(**plotly_layout, height=680, margin=_MARGIN,
                       title=f"Historical Analysis — {selected_machine}", showlegend=False)
     for i in range(1,4):
         for j in range(1,3):
@@ -1046,7 +1050,7 @@ def render_historical_analytics(hist_df: pd.DataFrame, selected_machine: str):
                     mode="lines", name=mid,
                     line=dict(color=palette[i%len(palette)],width=1.5), opacity=0.85,
                 ))
-        fig_d.update_layout(**plotly_layout, title="Degradation % Over Time", height=330)
+        fig_d.update_layout(**plotly_layout, title="Degradation % Over Time", height=330, margin=_MARGIN)
         fig_d.update_xaxes(**_AX)
         fig_d.update_yaxes(**_AX, title_text="Degradation %")
         st.plotly_chart(fig_d, use_container_width=True)
@@ -1063,7 +1067,7 @@ def render_historical_analytics(hist_df: pd.DataFrame, selected_machine: str):
                     mode="lines", name=mid,
                     line=dict(color=palette[i%len(palette)],width=1.5), opacity=0.85,
                 ))
-        fig_r.update_layout(**plotly_layout, title="RUL Trends (Hours)", height=330)
+        fig_r.update_layout(**plotly_layout, title="RUL Trends (Hours)", height=330, margin=_MARGIN)
         fig_r.update_xaxes(**_AX)
         fig_r.update_yaxes(**_AX, title_text="RUL (hours)")
         st.plotly_chart(fig_r, use_container_width=True)
@@ -1122,7 +1126,7 @@ Sensors: temp · vib · press · energy · load · runtime · RPM
                 textfont=dict(size=11,color="white"), name=lbl,
             ))
         fig_p.update_layout(**plotly_layout, title="Performance Summary",
-                            height=280, showlegend=False)
+                            height=280, showlegend=False, margin=_MARGIN)
         fig_p.update_xaxes(**_AX, range=[0,105])
         fig_p.update_yaxes(**_AX)
         st.plotly_chart(fig_p, use_container_width=True)
@@ -1217,7 +1221,7 @@ def render_operations_dashboard(readings_df: pd.DataFrame, kpis: dict):
                          annotation_text="7d",        annotation_font_color="#FFB800",annotation_font_size=9)
         fig_tl.add_vline(x=today+timedelta(days=30),  line_dash="dash",  line_color="#00FF9D", line_width=1,
                          annotation_text="30d",       annotation_font_color="#00FF9D",annotation_font_size=9)
-        fig_tl.update_layout(**plotly_layout, height=380, title="Fleet Maintenance Timeline", showlegend=False)
+        fig_tl.update_layout(**plotly_layout, height=380, title="Fleet Maintenance Timeline", showlegend=False, margin=_MARGIN)
         fig_tl.update_xaxes(**_AX, title_text="Date")
         fig_tl.update_yaxes(**_AX)
         st.plotly_chart(fig_tl, use_container_width=True)
